@@ -38,7 +38,7 @@ export default function HistoryScreen() {
       // Find the thumbnail
       const thumbnail = thumbnails.find(t => t.id === id);
       if (!thumbnail || !thumbnail.imageUrl) {
-        Alert.alert('Error', 'Thumbnail not found');
+        Alert.alert('Error', 'Icon not found');
         return;
       }
 
@@ -52,8 +52,8 @@ export default function HistoryScreen() {
       // If the image is already local, just save it directly
       if (thumbnail.imageUrl.startsWith('file://')) {
         const asset = await MediaLibrary.createAssetAsync(thumbnail.imageUrl);
-        await MediaLibrary.createAlbumAsync('Thumbnails', asset, false);
-        Alert.alert('Success', 'Thumbnail saved to your photo library!');
+        await MediaLibrary.createAlbumAsync('Icons', asset, false);
+        Alert.alert('Success', 'Icon saved to your photo library!');
 
         // Request review after successful download
         await requestReview();
@@ -61,7 +61,7 @@ export default function HistoryScreen() {
       }
 
       // Download the image to a temporary location if it's a remote URL
-      const fileUri = FileSystem.documentDirectory + `thumbnail_${id}.jpg`;
+      const fileUri = FileSystem.documentDirectory + `icon_${id}.jpg`;
       const downloadResult = await FileSystem.downloadAsync(thumbnail.imageUrl, fileUri);
 
       if (downloadResult.status !== 200) {
@@ -70,14 +70,14 @@ export default function HistoryScreen() {
 
       // Save to media library
       const asset = await MediaLibrary.createAssetAsync(downloadResult.uri);
-      await MediaLibrary.createAlbumAsync('Thumbnails', asset, false);
+      await MediaLibrary.createAlbumAsync('Icons', asset, false);
 
-      Alert.alert('Success', 'Thumbnail saved to your photo library!');
+      Alert.alert('Success', 'Icon saved to your photo library!');
 
       // Request review after successful download
       await requestReview();
     } catch (error) {
-      Alert.alert('Error', 'Failed to save thumbnail to photo library');
+      Alert.alert('Error', 'Failed to save icon to photo library');
     }
   };
 
@@ -85,13 +85,13 @@ export default function HistoryScreen() {
     try {
       const thumbnail = thumbnails.find(t => t.id === id);
       if (!thumbnail) {
-        Alert.alert('Error', 'Thumbnail not found');
+        Alert.alert('Error', 'Icon not found');
         return;
       }
 
       // App Store URL - will be updated once app is published
-      const appStoreUrl = 'https://apps.apple.com/app/youtube-thumbnail-generator/id[YOUR_APP_ID]';
-      const shareMessage = `Check out this thumbnail I created with YouTube Thumbnail Generator!\n\nDownload the app: ${appStoreUrl}`;
+      const appStoreUrl = 'https://apps.apple.com/app/ai-icon-generator/id[YOUR_APP_ID]';
+      const shareMessage = `Check out this icon I created with AI Icon Generator!\n\nDownload the app: ${appStoreUrl}`;
 
       const result = await Share.share(
         {
@@ -99,8 +99,8 @@ export default function HistoryScreen() {
           url: thumbnail.imageUrl, // iOS will include the image
         },
         {
-          subject: 'Check out my thumbnail!', // For email sharing
-          dialogTitle: 'Share Thumbnail', // Android only
+          subject: 'Check out my icon!', // For email sharing
+          dialogTitle: 'Share Icon', // Android only
         }
       );
 
@@ -114,7 +114,7 @@ export default function HistoryScreen() {
         // Dismissed
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to share thumbnail');
+      Alert.alert('Error', 'Failed to share icon');
     }
   };
 
@@ -123,7 +123,7 @@ export default function HistoryScreen() {
       const updatedThumbnail = await toggleFavorite(id);
 
       if (!updatedThumbnail) {
-        Alert.alert('Error', 'Thumbnail not found');
+        Alert.alert('Error', 'Icon not found');
         return;
       }
 
@@ -132,14 +132,14 @@ export default function HistoryScreen() {
 
       Alert.alert('Success', updatedThumbnail.isFavorited ? 'Added to saved' : 'Removed from saved');
     } catch (error) {
-      Alert.alert('Error', 'Failed to update thumbnail');
+      Alert.alert('Error', 'Failed to update icon');
     }
   };
 
   const handleDelete = async (id: string) => {
     Alert.alert(
-      'Delete Thumbnail',
-      'Are you sure you want to delete this thumbnail?',
+      'Delete Icon',
+      'Are you sure you want to delete this icon?',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -150,7 +150,7 @@ export default function HistoryScreen() {
               await deleteSavedThumbnail(id);
               setThumbnails(prev => prev.filter(thumb => thumb.id !== id));
             } catch (error) {
-              Alert.alert('Error', 'Failed to delete thumbnail');
+              Alert.alert('Error', 'Failed to delete icon');
             }
           }
         }
@@ -164,7 +164,7 @@ export default function HistoryScreen() {
       <StatusBar style="light" />
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        <Text style={styles.title}>Thumbnail History</Text>
+        <Text style={styles.title}>Icon History</Text>
         <Text style={styles.subtitle}>Track your generated content</Text>
 
         <View style={styles.filterSection}>
@@ -213,12 +213,12 @@ export default function HistoryScreen() {
             ) : (
               <View style={styles.emptyState}>
                 <Text style={styles.emptyTitle}>
-                  {filter === 'saved' ? 'No saved thumbnails' : 'No thumbnails'}
+                  {filter === 'saved' ? 'No saved icons' : 'No icons'}
                 </Text>
                 <Text style={styles.emptySubtitle}>
                   {filter === 'saved'
-                    ? 'Click the heart icon on thumbnails to save them'
-                    : 'Generate and save thumbnails to see them here'
+                    ? 'Click the heart icon on icons to save them'
+                    : 'Generate and save icons to see them here'
                   }
                 </Text>
               </View>

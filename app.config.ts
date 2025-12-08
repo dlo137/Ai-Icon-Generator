@@ -2,8 +2,8 @@ import 'dotenv/config';
 
 export default {
   expo: {
-    name: "Youtube Thumbnail Generator",
-    slug: "youtube-thumbnail-generator",
+    name: "Ai Icon Generator",
+    slug: "ai-icon-generator",
     version: "1.0.16",
     orientation: "portrait",
     icon: "./assets/icon.png",
@@ -35,8 +35,8 @@ export default {
       icon: "./assets/icon.png",
       infoPlist: {
         ITSAppUsesNonExemptEncryption: false,
-        NSPhotoLibraryUsageDescription: "This app needs access to your photo library to save generated thumbnails.",
-        NSPhotoLibraryAddUsageDescription: "This app needs permission to save thumbnails to your photo library."
+        NSPhotoLibraryUsageDescription: "This app needs access to your photo library to save generated icons.",
+        NSPhotoLibraryAddUsageDescription: "This app needs permission to save icons to your photo library."
       },
       usesAppleSignIn: true
     },
@@ -69,7 +69,7 @@ export default {
           data: [
             {
               scheme: "https",
-              host: "zxklggjxauvvesqwqvgi.supabase.co",
+              host: "eutvdhgxgwrfrrwxuuvp.supabase.co",
               pathPrefix: "/auth/v1/callback"
             }
           ],

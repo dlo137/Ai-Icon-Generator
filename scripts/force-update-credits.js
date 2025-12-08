@@ -2,7 +2,7 @@
 // This bypasses RLS policies
 const fetch = require('node-fetch');
 
-const SUPABASE_URL = 'https://zxklggjxauvvesqwqvgi.supabase.co';
+const SUPABASE_URL = 'https://eutvdhgxgwrfrrwxuuvp.supabase.co';
 // You'll need to get your service role key from Supabase dashboard > Settings > API
 const SERVICE_ROLE_KEY = process.argv[2];
 

@@ -1,14 +1,15 @@
 // deno run --allow-env --allow-net --allow-read
 import { serve } from "https://deno.land/std/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { Image } from "https://deno.land/x/imagescript@1.2.15/mod.ts";
 
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 
-// Choose a 16:9 size YouTube accepts. 1280x720 is standard.
-const WIDTH = 1280;
-const HEIGHT = 720;
+// Square 1024x1024 for icons
+const WIDTH = 1024;
+const HEIGHT = 1024;
 
 // Gemini 2.5 Flash with native image generation (may be free tier compatible)
 const IMAGES_ENDPOINT =
@@ -35,6 +36,51 @@ function b64ToUint8(base64: string) {
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   return bytes;
+}
+
+async function resizeImageTo1024x1024(imageBytes: Uint8Array): Promise<Uint8Array> {
+  console.log('🔄 Resizing image to 1024x1024...');
+  try {
+    // Decode the image
+    const image = await Image.decode(imageBytes);
+    console.log(`📐 Original image size: ${image.width}x${image.height}`);
+
+    // If already square and correct size, return as-is
+    if (image.width === WIDTH && image.height === HEIGHT) {
+      console.log('✅ Image already 1024x1024, no resize needed');
+      return imageBytes;
+    }
+
+    let processedImage = image;
+
+    // If not square, crop to square first (center crop)
+    if (image.width !== image.height) {
+      const minDimension = Math.min(image.width, image.height);
+      const x = Math.floor((image.width - minDimension) / 2);
+      const y = Math.floor((image.height - minDimension) / 2);
+
+      console.log(`✂️  Cropping to square: ${minDimension}x${minDimension} from position (${x}, ${y})`);
+      processedImage = image.crop(x, y, minDimension, minDimension);
+      console.log(`✅ Cropped to: ${processedImage.width}x${processedImage.height}`);
+    }
+
+    // Now resize to 1024x1024 (both dimensions specified, no aspect ratio preservation)
+    if (processedImage.width !== WIDTH || processedImage.height !== HEIGHT) {
+      console.log(`🔄 Resizing from ${processedImage.width}x${processedImage.height} to ${WIDTH}x${HEIGHT}`);
+      processedImage = processedImage.resize(WIDTH, HEIGHT);
+      console.log(`✅ Final size: ${processedImage.width}x${processedImage.height}`);
+    }
+
+    // Encode back to PNG
+    const pngBytes = await processedImage.encode();
+    console.log(`💾 Final image size: ${pngBytes.length} bytes`);
+
+    return pngBytes;
+  } catch (error) {
+    console.error('❌ Error resizing image:', error);
+    console.log('⚠️  Returning original image without resizing');
+    return imageBytes;
+  }
 }
 
 function detectMimeTypeFromBytes(bytes: Uint8Array): string {
@@ -225,29 +271,43 @@ async function callGeminiImagePreview(prompt: string, subjectImageUrl?: string, 
   // Create explicit prompt based on mode
   let promptText: string;
 
-  const hardRules = `IMPORTANT (obey strictly):
-• Native 16:9 aspect ratio (1280×720 pixels). Do NOT generate a different ratio and add black/white bars.
-• Full-bleed image: background must touch all four canvas edges - top, bottom, left, and right.
-• Absolutely NO borders, frames, strokes, outlines, vignettes, drop-shadow rims, or poster margins.
-• NO black bars, white bars, letterboxing, or pillarboxing at top/bottom or left/right.
-• Safe margins are INVISIBLE spacing only; do not draw lines/boxes to indicate them.
-• Keep a 6–8% safe margin for faces/text; never exceed 10%.
-• No cropped faces or cropped text.
-• Main subject fills 60–75% of frame height (no tiny subject).
-• Headline spans 70–90% of frame width and stays inside safe area.
-• Avoid large empty areas or big white borders.
-• Balanced, center-weighted framing unless otherwise stated.`;
+  const appIconRules = `PROFESSIONAL APP ICON DESIGN STANDARDS (obey strictly):
+
+TECHNICAL REQUIREMENTS:
+• 1024×1024 pixels, perfect square 1:1 aspect ratio
+• Full-bleed design: background must touch all four canvas edges
+• Rounded-rectangle safe zone: keep important elements away from corners (10-15% margin from edges)
+• NO borders, frames, strokes, outlines, vignettes, or drop-shadow rims
+• NO black/white bars or letterboxing
+
+DESIGN PRINCIPLES:
+• NO people or faces - focus on objects, symbols, or abstract concepts
+• ONE clear symbol or object centered - avoid clutter
+• Minimalistic composition - remove unnecessary details
+• Bold, clean shapes with sharp edges
+• Strong visual contrast for instant recognition
+• Smooth gradients or flat-color backgrounds
+• Symmetrical and balanced composition
+• Must be recognizable at small sizes (as small as 29x29px)
+
+AESTHETIC:
+• Modern iOS/Android app store quality
+• Premium, polished, high-end look
+• Consistent lighting and shadows
+• Professional color palette
+• Clean, crisp edges`;
 
   if (baseImageUrl) {
-    promptText = `${hardRules}
+    promptText = `${appIconRules}
 
-Edit the given 1280×720 image. Keep all faces/text inside safe margins; if needed, tighten composition without creating any border or frame.
-${prompt}`;
+Edit the given image to transform it into a professional app icon following all standards above.
+User request: ${prompt}`;
   } else {
-    promptText = `${hardRules}
+    promptText = `${appIconRules}
 
-Generate a 1280×720 YouTube thumbnail. Leave breathing room for faces/text but do not render any visible border.
-${prompt}`;
+Create a professional app icon based on this concept: ${prompt}
+
+Remember: No people/faces, one clear centered symbol, minimalistic, bold shapes, strong contrast, recognizable at small sizes.`;
   }
 
   const parts: any[] = [{ text: promptText }];
@@ -290,6 +350,13 @@ ${prompt}`;
     });
   }
 
+  console.log('🔵 Making Gemini API request with config:', {
+    endpoint: IMAGE_PREVIEW_ENDPOINT,
+    promptLength: promptText.length,
+    partsCount: parts.length,
+    seed: seed
+  });
+
   const response = await fetch(IMAGE_PREVIEW_ENDPOINT, {
     method: "POST",
     headers: {
@@ -304,43 +371,80 @@ ${prompt}`;
         temperature: seed ? 0.9 : 0.7, // Higher temperature for more variation when seed is provided
         topK: 40,
         topP: 0.8,
-        maxOutputTokens: 1000,
-        responseModalities: ["TEXT", "IMAGE"],
+        maxOutputTokens: 8000,
+        responseModalities: ["IMAGE"], // ONLY IMAGE - no text fallback
         ...(seed && { seed }) // Add seed if provided for unique generations
       },
       systemInstruction: {
         parts: [{
-          text: "You are an expert thumbnail generator. Always create images in 16:9 aspect ratio (1280x720 pixels) suitable for YouTube thumbnails. The output must be horizontal/landscape orientation."
+          text: "You are an expert app icon designer specializing in iOS and Android app store standards. Create professional, minimalistic icons in 1024x1024 pixels with strong visual impact. Focus on single, clear symbols without people or faces. Design for instant recognition at small sizes with bold shapes, strong contrast, and polished aesthetics. Always output perfect squares with rounded-rectangle safe zones."
         }]
       }
     }),
   });
 
+  console.log('🟢 Gemini API responded with status:', response.status);
+
   if (!response.ok) {
     const errorText = await response.text();
+    console.error('🔴 Gemini API error response:', errorText);
     throw new Error(`Gemini Image Preview API error: ${response.status} ${response.statusText} - ${errorText}`);
   }
 
   const result = await response.json();
+  console.log('📦 Gemini API result structure:', {
+    hasCandidates: !!result.candidates,
+    candidatesCount: result.candidates?.length,
+    firstCandidateHasContent: !!result.candidates?.[0]?.content,
+    firstCandidatePartsCount: result.candidates?.[0]?.content?.parts?.length,
+    finishReason: result.candidates?.[0]?.finishReason,
+    safetyRatings: result.candidates?.[0]?.safetyRatings
+  });
 
-  if (!result.candidates || !result.candidates[0] || !result.candidates[0].content) {
-    throw new Error("No content generated from Gemini Image Preview API");
+  if (!result.candidates || !result.candidates[0]) {
+    console.error('❌ No candidates in response');
+    throw new Error("No candidates in Gemini response");
+  }
+
+  if (!result.candidates[0].content) {
+    console.error('❌ No content in first candidate. Full candidate:', JSON.stringify(result.candidates[0], null, 2));
+    const finishReason = result.candidates[0].finishReason;
+    if (finishReason === 'SAFETY') {
+      throw new Error("Content blocked by safety filters. Try a different prompt.");
+    }
+    throw new Error(`No content generated. Finish reason: ${finishReason || 'unknown'}`);
   }
 
   // Check if the response contains image data
   const content = result.candidates[0].content;
+  console.log('🔍 Checking content parts:', {
+    hasParts: !!content.parts,
+    partsCount: content.parts?.length,
+    partTypes: content.parts?.map((p: any) => ({
+      hasInlineData: !!p.inlineData,
+      hasText: !!p.text,
+      mimeType: p.inlineData?.mimeType
+    }))
+  });
+
   if (content.parts && content.parts.length > 0) {
     // Find the first part with image data
     for (const part of content.parts) {
       if (part.inlineData && part.inlineData.mimeType && part.inlineData.mimeType.startsWith("image/")) {
+        console.log('✅ Found image data! MimeType:', part.inlineData.mimeType);
         const imageData = part.inlineData.data;
         return b64ToUint8(imageData);
       }
+      if (part.text) {
+        console.log('📝 Found text response:', part.text.substring(0, 200));
+      }
     }
     // No image found in any part
+    console.error('❌ No image found in response parts');
     throw new Error("Gemini Image Preview did not return image data");
   } else {
     // No parts in response
+    console.error('❌ Response has no parts');
     throw new Error("Gemini Image Preview returned empty response");
   }
 }
@@ -418,11 +522,11 @@ serve(async (req: Request) => {
 
     // Enhanced prompt for style transfer with subject integration
     if (subjectImageUrl && referenceImageUrls && referenceImageUrls.length > 0) {
-      finalPrompt = `STYLE TRANSFER: Create a 16:9 YouTube thumbnail featuring the subject person in the style and composition of the reference image. Match the reference's pose, lighting, color palette, background elements, and artistic style while naturally integrating the subject person. Maintain the visual mood and framing of the reference. Generate in 1280x720 resolution. ${prompt}`;
+      finalPrompt = `STYLE TRANSFER: Create a 1024x1024 square icon featuring the subject person in the style and composition of the reference image. Match the reference's pose, lighting, color palette, background elements, and artistic style while naturally integrating the subject person. Maintain the visual mood and framing of the reference. ${prompt}`;
     } else if (referenceImageUrls && referenceImageUrls.length > 0) {
-      finalPrompt = `Create a 16:9 YouTube thumbnail inspired by the reference image(s) incorporating this concept: ${prompt}. Match the composition, lighting, and visual style. Generate in 1280x720 resolution.`;
+      finalPrompt = `Create a 1024x1024 square icon inspired by the reference image(s) incorporating this concept: ${prompt}. Match the composition, lighting, and visual style.`;
     } else if (subjectImageUrl) {
-      finalPrompt = `Create a 16:9 YouTube thumbnail featuring the person from the uploaded image: ${prompt}. Generate in 1280x720 resolution.`;
+      finalPrompt = `Create a 1024x1024 square icon featuring the person from the uploaded image: ${prompt}.`;
     }
 
     console.log('Generating with prompt:', finalPrompt);
@@ -444,120 +548,58 @@ serve(async (req: Request) => {
     const effectiveBaseImage = effectiveBaseImageUrl || blankFrameUrl;
     const isUsingBlankFrame = !effectiveBaseImageUrl && !!blankFrameUrl;
 
-    // Create 3 distinct variation prompts with unique identifiers to prevent caching
-    const timestamp = Date.now();
-    const randomSeed1 = Math.floor(Math.random() * 1000000);
-    const randomSeed2 = Math.floor(Math.random() * 1000000);
-    const randomSeed3 = Math.floor(Math.random() * 1000000);
-
-    const variation1Prompt = `${finalPrompt} Style: Bold and dramatic, high contrast colors with a sleek modern design. [Variation ID: ${timestamp}-${randomSeed1}]`;
-    const variation2Prompt = `${finalPrompt} Style: Energetic with dynamic composition and aesthetic colors. [Variation ID: ${timestamp}-${randomSeed2}]`;
-    const variation3Prompt = `${finalPrompt} Style: Clean and minimal with soft colors and simple composition. [Variation ID: ${timestamp}-${randomSeed3}]`;
-
-    // Generate 3 variations with graceful degradation - don't fail if one preview fails
-    const generateWithRetry = (prompt: string, seed: number) =>
+    // Generate single image with retry logic
+    const randomSeed = Math.floor(Math.random() * 1000000);
+    const generateWithRetry = () =>
       retryWithBackoff(() =>
-        callGeminiImagePreview(prompt, subjectImageUrl, referenceImageUrls, effectiveBaseImage, isUsingBlankFrame, seed)
+        callGeminiImagePreview(finalPrompt, subjectImageUrl, referenceImageUrls, effectiveBaseImage, isUsingBlankFrame, randomSeed)
       );
 
-    const results = await Promise.allSettled([
-      generateWithRetry(variation1Prompt, randomSeed1),
-      generateWithRetry(variation2Prompt, randomSeed2),
-      generateWithRetry(variation3Prompt, randomSeed3)
-    ]);
+    console.log('🎨 Image generated successfully, preparing to upload...');
+    const rawImageBytes = await generateWithRetry();
+    console.log('📏 Raw image size:', rawImageBytes.length, 'bytes');
 
-    // Extract successful results
-    const successfulResults: Uint8Array[] = [];
-    const errors: string[] = [];
-
-    for (let i = 0; i < results.length; i++) {
-      const result = results[i];
-      if (result.status === 'fulfilled') {
-        successfulResults.push(result.value);
-      } else {
-        console.error(`Variation ${i + 1} failed:`, result.reason);
-        errors.push(`Variation ${i + 1}: ${result.reason.message}`);
-      }
-    }
-
-    // If all 3 failed, return 503 (service temporarily unavailable)
-    if (successfulResults.length === 0) {
-      console.error('All image generation attempts failed');
-      return new Response(JSON.stringify({
-        error: 'Image generation service temporarily unavailable. Please try again.',
-        details: errors
-      }), {
-        status: 503,
-        headers: { "Content-Type": "application/json", "Retry-After": "60" }
-      });
-    }
-
-    // If some succeeded, fill in missing ones by duplicating successful results
-    while (successfulResults.length < 3) {
-      successfulResults.push(successfulResults[0]); // Duplicate the first successful one
-    }
-
-    const [bytes1, bytes2, bytes3] = successfulResults;
+    // Resize image to exactly 1024x1024
+    const imageBytes = await resizeImageTo1024x1024(rawImageBytes);
 
     // Get user ID from auth for namespacing
+    console.log('👤 Getting user ID...');
     const { data: { user } } = await supabase.auth.getUser();
     const userId = user?.id || 'anonymous';
+    console.log('👤 User ID:', userId);
 
-    // Store 3 images to Supabase Storage with user-specific paths
-    const filename1 = `${userId}/${crypto.randomUUID()}.png`;
-    const filename2 = `${userId}/${crypto.randomUUID()}.png`;
-    const filename3 = `${userId}/${crypto.randomUUID()}.png`;
+    // Store single image to Supabase Storage with user-specific path
+    const filename = `${userId}/${crypto.randomUUID()}.png`;
+    console.log('💾 Uploading to storage:', filename);
 
-    const [upload1, upload2, upload3] = await Promise.all([
-      supabase.storage.from("thumbnails").upload(filename1, bytes1, { contentType: "image/png", upsert: true }),
-      supabase.storage.from("thumbnails").upload(filename2, bytes2, { contentType: "image/png", upsert: true }),
-      supabase.storage.from("thumbnails").upload(filename3, bytes3, { contentType: "image/png", upsert: true })
-    ]);
+    const upload = await supabase.storage.from("thumbnails").upload(filename, imageBytes, { contentType: "image/png", upsert: true });
 
-    if (upload1.error) throw upload1.error;
-    if (upload2.error) throw upload2.error;
-    if (upload3.error) throw upload3.error;
+    if (upload.error) {
+      console.error('❌ Storage upload error:', upload.error);
+      throw upload.error;
+    }
+    console.log('✅ Upload successful!');
 
-    // Generate long-lived signed URLs (7 days) for 3 images
-    // The app will download these to permanent local storage immediately
+    // Generate long-lived signed URL (7 days)
+    // The app will download this to permanent local storage immediately
     const SEVEN_DAYS = 7 * 24 * 60 * 60; // 7 days in seconds
-    const [signed1, signed2, signed3] = await Promise.all([
-      supabase.storage.from("thumbnails").createSignedUrl(filename1, SEVEN_DAYS),
-      supabase.storage.from("thumbnails").createSignedUrl(filename2, SEVEN_DAYS),
-      supabase.storage.from("thumbnails").createSignedUrl(filename3, SEVEN_DAYS)
-    ]);
+    console.log('🔗 Creating signed URL...');
+    const signed = await supabase.storage.from("thumbnails").createSignedUrl(filename, SEVEN_DAYS);
 
-    if (signed1.error) throw signed1.error;
-    if (signed2.error) throw signed2.error;
-    if (signed3.error) throw signed3.error;
+    if (signed.error) {
+      console.error('❌ Signed URL error:', signed.error);
+      throw signed.error;
+    }
+    console.log('✅ Signed URL created:', signed.data?.signedUrl?.substring(0, 50) + '...');
 
+    console.log('📤 Sending response to client...');
     return new Response(JSON.stringify({
-      imageUrl: signed1.data?.signedUrl, // keep for compatibility
-      url: signed1.data?.signedUrl, // keep for compatibility
+      imageUrl: signed.data?.signedUrl,
+      url: signed.data?.signedUrl,
       width: WIDTH,
       height: HEIGHT,
-      file: filename1,
-      variation1: {
-        imageUrl: signed1.data?.signedUrl,
-        width: WIDTH,
-        height: HEIGHT,
-        file: filename1,
-        prompt: finalPrompt
-      },
-      variation2: {
-        imageUrl: signed2.data?.signedUrl,
-        width: WIDTH,
-        height: HEIGHT,
-        file: filename2,
-        prompt: finalPrompt
-      },
-      variation3: {
-        imageUrl: signed3.data?.signedUrl,
-        width: WIDTH,
-        height: HEIGHT,
-        file: filename3,
-        prompt: finalPrompt
-      }
+      file: filename,
+      prompt: finalPrompt
     }), { headers: { "Content-Type": "application/json" } });
 
   } catch (e) {

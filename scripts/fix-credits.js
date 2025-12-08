@@ -1,7 +1,7 @@
 // Script to manually fix credits for a user
 const { createClient } = require('@supabase/supabase-js');
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://zxklggjxauvvesqwqvgi.supabase.co';
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://eutvdhgxgwrfrrwxuuvp.supabase.co';
 const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
 if (!supabaseKey) {

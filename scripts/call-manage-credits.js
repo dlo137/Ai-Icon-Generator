@@ -1,8 +1,8 @@
 // Script to call manage-credits edge function directly
 const { createClient } = require('@supabase/supabase-js');
 
-const supabaseUrl = 'https://zxklggjxauvvesqwqvgi.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp4a2xnZ2p4YXV2dmVzcXdxdmdpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg3NDE2NDIsImV4cCI6MjA3NDMxNzY0Mn0._OWdNPlmZs0N1tMY6HAcO-YWjHJHYcxbXmZ2qZv6Tuo';
+const supabaseUrl = 'https://eutvdhgxgwrfrrwxuuvp.supabase.co';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV1dHZkaGd4Z3dyZnJyd3h1dXZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxNjY0NDksImV4cCI6MjA4MDc0MjQ0OX0.GTXIBHQeOOuI8KZvEVG4WiT4S2vsO_1XwWm70mcDEC8';
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 

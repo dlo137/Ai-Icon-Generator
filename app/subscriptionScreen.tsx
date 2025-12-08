@@ -323,7 +323,7 @@ export default function SubscriptionScreen() {
         <View style={styles.header}>
           <Text style={styles.title}>Turn Ideas Into Clicks.</Text>
           <Text style={styles.subtitle}>
-            Every click counts. Create and save eye-catching thumbnails that grow your channel, build your audience, and boost your revenue.
+            Every click counts. Create and save eye-catching icons that grow your channel, build your audience, and boost your revenue.
           </Text>
         </View>
 

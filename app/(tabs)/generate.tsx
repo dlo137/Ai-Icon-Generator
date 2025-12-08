@@ -309,7 +309,7 @@ export default function GenerateScreen() {
 
   const downloadThumbnail = async () => {
     if (!generatedImageUrl) {
-      Alert.alert('Error', 'No thumbnail to download');
+      Alert.alert('Error', 'No icon to download');
       return;
     }
 
@@ -317,12 +317,12 @@ export default function GenerateScreen() {
       // Request permissions
       const { status } = await MediaLibrary.requestPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission Required', 'Please grant photo library access to save thumbnails');
+        Alert.alert('Permission Required', 'Please grant photo library access to save icons');
         return;
       }
 
       // Download the image to local filesystem
-      const filename = `thumbnail_${Date.now()}.png`;
+      const filename = `icon_${Date.now()}.png`;
       const docDir = (FileSystem as any).documentDirectory;
       if (!docDir) {
         throw new Error('Document directory not available');
@@ -333,12 +333,12 @@ export default function GenerateScreen() {
 
       // Save to photo library
       const asset = await MediaLibrary.createAssetAsync(uri);
-      await MediaLibrary.createAlbumAsync('AI Thumbnails', asset, false);
+      await MediaLibrary.createAlbumAsync('AI Icons', asset, false);
 
-      Alert.alert('Success', 'Thumbnail saved to your photo library!');
+      Alert.alert('Success', 'Icon saved to your photo library!');
 
     } catch (error) {
-      Alert.alert('Error', 'Failed to save thumbnail. Please try again.');
+      Alert.alert('Error', 'Failed to save icon. Please try again.');
     }
   };
 
@@ -414,16 +414,16 @@ export default function GenerateScreen() {
       return;
     }
 
-    // Check credits before generating edit
-    const credits = await getCredits();
-    if (credits.current <= 0) {
-      Alert.alert(
-        'No Credits',
-        'You have run out of credits. Please upgrade your plan to continue editing thumbnails.',
-        [{ text: 'OK' }]
-      );
-      return;
-    }
+    // Check credits before generating edit - DISABLED FOR TESTING
+    // const credits = await getCredits();
+    // if (credits.current <= 0) {
+    //   Alert.alert(
+    //     'No Credits',
+    //     'You have run out of credits. Please upgrade your plan to continue editing icons.',
+    //     [{ text: 'OK' }]
+    //   );
+    //   return;
+    // }
 
     setIsModalGenerating(true);
     Keyboard.dismiss();
@@ -435,7 +435,7 @@ export default function GenerateScreen() {
       );
 
       if (!currentGeneration) {
-        Alert.alert('Error', 'Could not find original thumbnail');
+        Alert.alert('Error', 'Could not find original icon');
         return;
       }
 
@@ -448,8 +448,8 @@ export default function GenerateScreen() {
       const isFramingAdjustment = /zoom|show more|show less|pull back|widen|closer|crop|frame|padding|margin/i.test(enhancedPrompt);
 
       const fullPrompt = isFramingAdjustment
-        ? `Original thumbnail: "${currentGeneration.prompt}". Adjustment: ${enhancedPrompt}. Keep the same content and style, but adjust the framing/composition as requested.`
-        : `Keep the exact same composition, layout, and core elements from this thumbnail: "${currentGeneration.prompt}". Only make this specific adjustment: ${enhancedPrompt}. Do not change the overall design, just modify the requested aspect while maintaining everything else identical.`;
+        ? `Original icon: "${currentGeneration.prompt}". Adjustment: ${enhancedPrompt}. Keep the same content and style, but adjust the framing/composition as requested.`
+        : `Keep the exact same composition, layout, and core elements from this icon: "${currentGeneration.prompt}". Only make this specific adjustment: ${enhancedPrompt}. Do not change the overall design, just modify the requested aspect while maintaining everything else identical.`;
 
       // Only use images that are actively selected for adjustment mode
       const activeSubjectImageUrl = subjectImage ? subjectImageUrl : null;
@@ -473,7 +473,7 @@ export default function GenerateScreen() {
       }
 
       if (data?.error) {
-        Alert.alert('Error', data.error || 'Failed to generate thumbnail adjustment');
+        Alert.alert('Error', data.error || 'Failed to generate icon adjustment');
         return;
       }
 
@@ -512,13 +512,13 @@ export default function GenerateScreen() {
       });
       setModalPrompt('');
 
-      // Deduct 1 credit for successful edit (only 1 image generated in edit mode)
-      await deductCredit(1);
+      // Deduct 1 credit for successful edit (only 1 image generated in edit mode) - DISABLED FOR TESTING
+      // await deductCredit(1);
 
       // Refresh credits display immediately
       await refreshCredits();
 
-      Alert.alert('Success!', 'Your thumbnail has been adjusted');
+      Alert.alert('Success!', 'Your icon has been adjusted');
 
     } catch (error) {
       Alert.alert('Error', 'Something went wrong. Please check your connection and try again.');
@@ -832,20 +832,20 @@ export default function GenerateScreen() {
     const topicToUse = overrideTopic || topic;
 
     if (!topicToUse.trim()) {
-      Alert.alert('Error', 'Please enter a description for your thumbnail');
+      Alert.alert('Error', 'Please enter a description for your icon');
       return;
     }
 
-    // Check credits before generating
-    const credits = await getCredits();
-    if (credits.current <= 0) {
-      Alert.alert(
-        'Subscription Required',
-        'You need an active subscription to generate thumbnails. Please subscribe to continue.',
-        [{ text: 'OK' }]
-      );
-      return;
-    }
+    // Check credits before generating - DISABLED FOR TESTING
+    // const credits = await getCredits();
+    // if (credits.current <= 0) {
+    //   Alert.alert(
+    //     'Subscription Required',
+    //     'You need an active subscription to generate icons. Please subscribe to continue.',
+    //     [{ text: 'OK' }]
+    //   );
+    //   return;
+    // }
 
     // Store the prompt for title display BEFORE clearing
     let promptToUse = topicToUse.trim();
@@ -858,9 +858,9 @@ export default function GenerateScreen() {
     if (activeSubjectImageUrl && activeReferenceImageUrls.length > 0) {
       promptToUse += '. Use the reference image(s) as the exact style and composition template, and replace the main subject/person in the reference with the provided subject image (face swap/body replacement). Maintain the exact background, lighting, pose, and style of the reference.';
     } else if (activeSubjectImageUrl) {
-      promptToUse += '. Use the provided subject image as the main focus, incorporating the person/face into the generated thumbnail.';
+      promptToUse += '. Use the provided subject image as the main focus, incorporating the person/face into the generated icon.';
     } else if (activeReferenceImageUrls.length > 0) {
-      promptToUse += '. Use the reference image(s) as inspiration for the style, composition, and overall look of the thumbnail.';
+      promptToUse += '. Use the reference image(s) as inspiration for the style, composition, and overall look of the icon.';
     }
 
     setLastPrompt(topicToUse.trim()); // Store original prompt for display
@@ -889,7 +889,7 @@ export default function GenerateScreen() {
         const errorMsg = error.message || 'Unknown error';
 
         // Provide helpful error messages based on common issues
-        let userMessage = 'Failed to generate thumbnail. ';
+        let userMessage = 'Failed to generate icon. ';
         if (errorMsg.includes('429') || errorMsg.includes('rate limit') || errorMsg.includes('quota')) {
           userMessage += 'The AI service is currently at capacity. Please wait a minute and try again.';
         } else if (errorMsg.includes('timeout') || errorMsg.includes('timed out')) {
@@ -905,45 +905,37 @@ export default function GenerateScreen() {
       }
 
       if (data?.error) {
-        Alert.alert('Error', data.error || 'Failed to generate thumbnail');
+        Alert.alert('Error', data.error || 'Failed to generate icon');
         return;
       }
 
-      if (data?.variation1?.imageUrl || data?.variation2?.imageUrl || data?.variation3?.imageUrl) {
-        // Success! Display variations
-        const url1 = data.variation1?.imageUrl;
-        const url2 = data.variation2?.imageUrl;
-        const url3 = data.variation3?.imageUrl;
+      // Handle single image response (new format)
+      if (data?.imageUrl || data?.url) {
+        const imageUrl = data.imageUrl || data.url;
 
-        if (url1) {
-          setGeneratedImageUrl(url1);
-          // Automatically add to history (not favorited)
-          await addThumbnailToHistory(promptToUse, url1);
-        }
-        if (url2) {
-          setGeneratedImageUrl2(url2);
-          // Automatically add to history (not favorited)
-          await addThumbnailToHistory(promptToUse, url2);
-        }
-        if (url3) {
-          setGeneratedImageUrl3(url3);
-          // Automatically add to history (not favorited)
-          await addThumbnailToHistory(promptToUse, url3);
+        // Set the generated image
+        setGeneratedImageUrl(imageUrl);
+
+        // Automatically add to history (not favorited) - silently fail if not authenticated
+        try {
+          await addThumbnailToHistory(promptToUse, imageUrl);
+        } catch (historyError) {
+          console.log('Skipping history save (not authenticated):', historyError);
         }
 
         // Add to all generations list
         const newGeneration = {
           id: Date.now().toString(),
           prompt: promptToUse,
-          url1: url1 || '',
-          url2: url2,
-          url3: url3,
+          url1: imageUrl,
+          url2: undefined,
+          url3: undefined,
           timestamp: Date.now(),
         };
         setAllGenerations(prev => [newGeneration, ...prev]);
 
-        // Deduct 3 credits for successful generation (1 credit per image, 3 images generated)
-        await deductCredit(3);
+        // Deduct 1 credit for successful generation - DISABLED FOR TESTING
+        // await deductCredit(1);
 
         // Refresh credits display immediately
         await refreshCredits();
@@ -996,7 +988,7 @@ export default function GenerateScreen() {
                 <View style={styles.loadingThumbnailContainer}>
                   <View style={styles.loadingSkeletonWrapper}>
                     <View style={styles.loadingBorderAnimated}>
-                      <Svg width="100%" height="100%" viewBox="0 0 350 200" preserveAspectRatio="none">
+                      <Svg width="100%" height="100%" viewBox="0 0 350 350" preserveAspectRatio="none">
                         <Defs>
                           <LinearGradient id="borderGrad1">
                             <Stop offset="0%" stopColor="transparent" stopOpacity="0" />
@@ -1011,7 +1003,7 @@ export default function GenerateScreen() {
                           x="2"
                           y="2"
                           width="346"
-                          height="196"
+                          height="346"
                           rx="12"
                           stroke="#232932"
                           strokeWidth="1"
@@ -1021,7 +1013,7 @@ export default function GenerateScreen() {
                           x="2"
                           y="2"
                           width="346"
-                          height="196"
+                          height="346"
                           rx="12"
                           stroke="url(#borderGrad1)"
                           strokeWidth="3"
@@ -1041,7 +1033,7 @@ export default function GenerateScreen() {
                 <View style={styles.loadingThumbnailContainer}>
                   <View style={styles.loadingSkeletonWrapper}>
                     <View style={styles.loadingBorderAnimated}>
-                      <Svg width="100%" height="100%" viewBox="0 0 350 200" preserveAspectRatio="none">
+                      <Svg width="100%" height="100%" viewBox="0 0 350 350" preserveAspectRatio="none">
                         <Defs>
                           <LinearGradient id="borderGrad2">
                             <Stop offset="0%" stopColor="transparent" stopOpacity="0" />
@@ -1056,7 +1048,7 @@ export default function GenerateScreen() {
                           x="2"
                           y="2"
                           width="346"
-                          height="196"
+                          height="346"
                           rx="12"
                           stroke="#232932"
                           strokeWidth="1"
@@ -1066,7 +1058,7 @@ export default function GenerateScreen() {
                           x="2"
                           y="2"
                           width="346"
-                          height="196"
+                          height="346"
                           rx="12"
                           stroke="url(#borderGrad2)"
                           strokeWidth="3"
@@ -1086,7 +1078,7 @@ export default function GenerateScreen() {
                 <View style={styles.loadingThumbnailContainer}>
                   <View style={styles.loadingSkeletonWrapper}>
                     <View style={styles.loadingBorderAnimated}>
-                      <Svg width="100%" height="100%" viewBox="0 0 350 200" preserveAspectRatio="none">
+                      <Svg width="100%" height="100%" viewBox="0 0 350 350" preserveAspectRatio="none">
                         <Defs>
                           <LinearGradient id="borderGrad3">
                             <Stop offset="0%" stopColor="transparent" stopOpacity="0" />
@@ -1101,7 +1093,7 @@ export default function GenerateScreen() {
                           x="2"
                           y="2"
                           width="346"
-                          height="196"
+                          height="346"
                           rx="12"
                           stroke="#232932"
                           strokeWidth="1"
@@ -1111,7 +1103,7 @@ export default function GenerateScreen() {
                           x="2"
                           y="2"
                           width="346"
-                          height="196"
+                          height="346"
                           rx="12"
                           stroke="url(#borderGrad3)"
                           strokeWidth="3"
@@ -1203,7 +1195,7 @@ export default function GenerateScreen() {
               </View>
             )}
             <Text style={styles.heroTitle}>
-              {isLoading ? 'Generating your thumbnail...' : 'Generate your thumbnails.'}
+              {isLoading ? 'Generating your icon...' : 'Generate your icons.'}
             </Text>
             <Text style={styles.heroSubtitle}>
               {isLoading
@@ -1290,7 +1282,7 @@ export default function GenerateScreen() {
         <View style={styles.inputBar}>
           <TextInput
             style={styles.textInput}
-            placeholder="Describe your thumbnail idea"
+            placeholder="Describe your icon idea"
             placeholderTextColor="#7b818a"
             value={topic}
             onChangeText={setTopic}
@@ -1824,16 +1816,16 @@ export default function GenerateScreen() {
                     onPress={async () => {
                       if (!textSticker || imageContainerDimensions.width === 0 || imageContainerDimensions.height === 0) return;
 
-                      // Check credits before applying text
-                      const credits = await getCredits();
-                      if (credits.current <= 0) {
-                        Alert.alert(
-                          'No Credits',
-                          'You have run out of credits. Please upgrade your plan to continue editing thumbnails.',
-                          [{ text: 'OK' }]
-                        );
-                        return;
-                      }
+                      // Check credits before applying text - DISABLED FOR TESTING
+                      // const credits = await getCredits();
+                      // if (credits.current <= 0) {
+                      //   Alert.alert(
+                      //     'No Credits',
+                      //     'You have run out of credits. Please upgrade your plan to continue editing icons.',
+                      //     [{ text: 'OK' }]
+                      //   );
+                      //   return;
+                      // }
 
                       try {
                         setIsModalGenerating(true);
@@ -1898,13 +1890,17 @@ export default function GenerateScreen() {
                           const urlToSave = originalModalImageUrl || modalImageUrl;
                           console.log('[ADD TO HISTORY] Adding thumbnail with URL:', urlToSave.substring(0, 60));
                           // Save to history with text overlay
-                          await addThumbnailToHistory(currentGeneration.prompt, urlToSave, {
-                            textOverlay: textOverlay
-                          });
+                          try {
+                            await addThumbnailToHistory(currentGeneration.prompt, urlToSave, {
+                              textOverlay: textOverlay
+                            });
+                          } catch (historyError) {
+                            console.log('Skipping history save (not authenticated):', historyError);
+                          }
                         }
 
-                        // Deduct 1 credit for text overlay application (count as image generation)
-                        await deductCredit(1);
+                        // Deduct 1 credit for text overlay application (count as image generation) - DISABLED FOR TESTING
+                        // await deductCredit(1);
 
                         // Refresh credits display immediately
                         await refreshCredits();
@@ -2068,14 +2064,14 @@ export default function GenerateScreen() {
                           // Use originalModalImageUrl (the remote URL) for syncing, not the edited local path
                           // This ensures cross-device sync works correctly
                           const urlToSave = originalModalImageUrl || modalImageUrl;
-                          console.log('[SAVE] Saving thumbnail with URL:', urlToSave.substring(0, 60));
+                          console.log('[SAVE] Saving icon with URL:', urlToSave.substring(0, 60));
                           await saveThumbnail(currentGeneration.prompt, urlToSave, editsToSave);
-                          Alert.alert('Saved!', 'Thumbnail saved to your history');
+                          Alert.alert('Saved!', 'Icon saved to your history');
                         } else {
-                          Alert.alert('Error', 'Could not find thumbnail to save');
+                          Alert.alert('Error', 'Could not find icon to save');
                         }
                       } catch (error) {
-                        Alert.alert('Error', 'Failed to save thumbnail');
+                        Alert.alert('Error', 'Failed to save icon');
                       }
                     }}
                   >
@@ -2135,7 +2131,7 @@ export default function GenerateScreen() {
               <View style={styles.modalInputBar}>
                 <TextInput
                   style={styles.textInput}
-                  placeholder="Edit your thumbnail prompt"
+                  placeholder="Edit your icon prompt"
                   placeholderTextColor="#7b818a"
                   value={modalPrompt}
                   onChangeText={setModalPrompt}
@@ -2258,7 +2254,7 @@ export default function GenerateScreen() {
 
                       if (uploadedUrl) {
                         setSubjectImageUrl(uploadedUrl);
-                        Alert.alert('Subject Added', 'Subject image uploaded and ready for thumbnail generation');
+                        Alert.alert('Subject Added', 'Subject image uploaded and ready for icon generation');
                         setIsSubjectModalVisible(false);
                       } else {
                         Alert.alert('Upload Failed', 'Failed to upload subject image. Please try again.');
@@ -2370,7 +2366,7 @@ export default function GenerateScreen() {
                         setReferenceImageUrls(validUrls);
                         Alert.alert(
                           'References Added',
-                          `${validUrls.length} reference image${validUrls.length > 1 ? 's' : ''} uploaded and ready for thumbnail generation`
+                          `${validUrls.length} reference image${validUrls.length > 1 ? 's' : ''} uploaded and ready for icon generation`
                         );
                         setIsReferenceModalVisible(false);
                       } else {
@@ -2637,7 +2633,7 @@ const styles = StyleSheet.create({
   },
   generatedImage: {
     width: '100%',
-    aspectRatio: 16/9, // YouTube thumbnail ratio
+    aspectRatio: 1, // Square 1:1 ratio for icons
     borderRadius: 12,
     backgroundColor: CARD,
   },
@@ -2665,7 +2661,7 @@ const styles = StyleSheet.create({
   loadingSkeletonWrapper: {
     position: 'relative',
     width: '100%',
-    aspectRatio: 16/9,
+    aspectRatio: 1, // Square 1:1 ratio for icons
   },
   loadingBorderAnimated: {
     position: 'absolute',
@@ -2677,7 +2673,7 @@ const styles = StyleSheet.create({
   },
   loadingSkeleton: {
     width: '100%',
-    aspectRatio: 16/9,
+    aspectRatio: 1, // Square 1:1 ratio for icons
     borderRadius: 12,
     backgroundColor: CARD,
     overflow: 'hidden',
@@ -2835,13 +2831,13 @@ const styles = StyleSheet.create({
   },
   modalImage: {
     width: '100%',
-    aspectRatio: 16/9, // YouTube thumbnail ratio
+    aspectRatio: 1, // Square 1:1 ratio for icons
     borderRadius: 12,
     backgroundColor: CARD,
   },
   modalImageContainer: {
     width: '100%',
-    aspectRatio: 16/9, // YouTube thumbnail ratio
+    aspectRatio: 1, // Square 1:1 ratio for icons
   },
   modalPromptContainer: {
     paddingHorizontal: 18,
@@ -2915,7 +2911,7 @@ const styles = StyleSheet.create({
   imageWithDrawing: {
     position: 'relative',
     width: '100%',
-    aspectRatio: 16/9,
+    aspectRatio: 1, // Square 1:1 ratio for icons
   },
   drawingOverlay: {
     position: 'absolute',

@@ -1,7 +1,7 @@
 // Script to check all users and fix their credits
 const { createClient } = require('@supabase/supabase-js');
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://zxklggjxauvvesqwqvgi.supabase.co';
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://eutvdhgxgwrfrrwxuuvp.supabase.co';
 const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
 if (!supabaseKey) {

@@ -314,11 +314,11 @@ export default function WelcomeScreen() {
           >
             {step === 1 ? (
               <>
-                Thumbnail Designs{'\n'}Made Easy
+                Icon Designs{'\n'}Made Easy
               </>
             ) : step === 2 ? (
               <>
-                Unlock the Secret Behind Every Viral Thumbnail
+                Unlock the Secret Behind Every Viral Icon
               </>
             ) : null}
           </Animated.Text>

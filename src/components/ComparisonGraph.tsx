@@ -150,11 +150,11 @@ const ComparisonGraphExamples = () => {
 
       <ComparisonGraph
         title="Your Growth"
-        primaryLabel="With AI Thumbnails"
+        primaryLabel="With AI icons"
         comparisonLabel="Manual Design"
         startLabel="Beginning"
         endLabel="Your Result"
-        statisticText="Users see 60% more clicks with AI-generated thumbnails"
+        statisticText="Users see 60% more clicks with AI-generated icons"
         primaryColor="#3b82f6"
         comparisonColor="#ef4444"
         backgroundColor="#ffffff"

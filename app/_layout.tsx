@@ -1,7 +1,12 @@
 import '../polyfills';
 import { Stack, useRouter } from 'expo-router';
 import { useEffect } from 'react';
-import { Alert, Linking } from 'react-native';
+import { Alert, Linking, LogBox } from 'react-native';
+
+// Suppress media library warning for Expo Go
+LogBox.ignoreLogs([
+  'Due to changes in Androids permission requirements',
+]);
 
 function RootLayoutNav() {
   const router = useRouter();
