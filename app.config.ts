@@ -4,11 +4,11 @@ export default {
   expo: {
     name: "Ai Icon Generator",
     slug: "ai-icon-generator",
-    version: "1.0.17",
+    version: "1.0.21",
     orientation: "portrait",
     icon: "./assets/icon.png",
     userInterfaceStyle: "light",
-    scheme: "thumbnailgen",
+    scheme: "icongenerator",
     plugins: [
       "expo-web-browser",
       "expo-localization",
@@ -32,7 +32,7 @@ export default {
     },
     ios: {
       supportsTablet: true,
-      bundleIdentifier: "com.watsonsweb.thumbnail-generator",
+      bundleIdentifier: "com.watsonsweb.AI-Icon",
       buildNumber: "15",
       icon: "./assets/icon.png",
       infoPlist: {
@@ -43,7 +43,7 @@ export default {
       usesAppleSignIn: true
     },
     android: {
-      package: "com.aidawrapper.ThumbnailGenerator",
+      package: "com.watsonsweb.icongenerator",
       versionCode: 15,
       adaptiveIcon: {
         foregroundImage: "./assets/adaptive-icon.png",
@@ -59,7 +59,7 @@ export default {
           autoVerify: false,
           data: [
             {
-              scheme: "thumbnailgen",
+              scheme: "icongenerator",
               host: "auth"
             }
           ],

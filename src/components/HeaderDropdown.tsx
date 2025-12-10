@@ -30,12 +30,12 @@ export default function HeaderDropdown({
 
     try {
       const appStoreUrl = Platform.OS === 'ios'
-        ? 'itms-apps://itunes.apple.com/app/id1234567890?action=write-review'
-        : 'market://details?id=com.yourcompany.thumbnailgenerator';
+        ? 'itms-apps://itunes.apple.com/app/id6755940269?action=write-review'
+        : 'market://details?id=com.watsonsweb.icongenerator';
 
       const fallbackUrl = Platform.OS === 'ios'
-        ? 'https://apps.apple.com/app/id1234567890'
-        : 'https://play.google.com/store/apps/details?id=com.yourcompany.thumbnailgenerator';
+        ? 'https://apps.apple.com/app/id6755940269'
+        : 'https://play.google.com/store/apps/details?id=com.watsonsweb.icongenerator';
 
       const canOpen = await Linking.canOpenURL(appStoreUrl);
 

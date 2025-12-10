@@ -109,7 +109,7 @@ function RootLayoutNav() {
       <Stack.Screen
         name="index"
         options={{
-          title: 'AI YouTube Generator',
+          title: 'Ai Icon Generator',
           headerShown: false
         }}
       />

@@ -9,7 +9,7 @@ const StatisticsChart = () => {
   const chartWidth = width - padding * 2;
   const chartHeight = height - padding * 2;
 
-  // Create smooth curve path for blue line (AI Thumbnail Generator)
+  // Create smooth curve path for blue line (Ai Icon Generator)
   const bluePath = `
     M ${padding} ${padding + chartHeight * 0.5}
     Q ${padding + chartWidth * 0.25} ${padding + chartHeight * 0.55}
@@ -17,7 +17,7 @@ const StatisticsChart = () => {
     T ${padding + chartWidth} ${padding + chartHeight * 0.1}
   `;
 
-  // Create smooth curve path for red line (DIY Thumbnails)
+  // Create smooth curve path for red line (DIY Icons)
   const redPath = `
     M ${padding} ${padding + chartHeight * 0.5}
     Q ${padding + chartWidth * 0.25} ${padding + chartHeight * 0.8}
@@ -85,11 +85,11 @@ const StatisticsChart = () => {
         <View style={styles.legend}>
           <View style={styles.legendItem}>
             <View style={[styles.legendDot, { backgroundColor: '#3b82f6' }]} />
-            <Text style={styles.legendText}>With AI Thumbnail Generator</Text>
+            <Text style={styles.legendText}>With Ai Icon Generator</Text>
           </View>
           <View style={styles.legendItem}>
             <View style={[styles.legendDot, { backgroundColor: '#ef4444' }]} />
-            <Text style={styles.legendText}>DIY Thumbnails</Text>
+            <Text style={styles.legendText}>DIY Icons</Text>
           </View>
         </View>
       </View>

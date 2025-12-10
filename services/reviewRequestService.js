@@ -27,8 +27,8 @@ export const requestReview = async () => {
 
     // Show review prompt
     Alert.alert(
-      'Enjoying AI Thumbnail Generator?',
-      'If you love creating thumbnails with our app, would you mind taking a moment to rate us? It really helps!',
+      'Enjoying Ai Icon Generator?',
+      'If you love creating icons with our app, would you mind taking a moment to rate us? It really helps!',
       [
         {
           text: 'Not Now',

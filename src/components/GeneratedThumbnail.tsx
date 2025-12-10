@@ -63,13 +63,13 @@ export default function GeneratedThumbnail({ imageUrl, prompt, onEdit, style, te
 
       // Save to photo library
       const asset = await MediaLibrary.createAssetAsync(downloadResult.uri);
-      await MediaLibrary.createAlbumAsync('AI Thumbnails', asset, false);
+      await MediaLibrary.createAlbumAsync('AI Icons', asset, false);
 
-      Alert.alert('Success', 'Thumbnail saved to your photo library!');
+      Alert.alert('Success', 'Icon saved to your photo library!');
 
     } catch (error) {
       console.error('Download error:', error);
-      Alert.alert('Error', 'Failed to save thumbnail. Please try again.');
+      Alert.alert('Error', 'Failed to save icon. Please try again.');
     }
   };
 

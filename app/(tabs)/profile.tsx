@@ -14,8 +14,8 @@ import IAPService from '../../services/IAPService';
 
 export default function ProfileScreen() {
   const storeUrl = Platform.OS === 'android'
-    ? 'https://play.google.com/store/apps/details?id=com.aidawrapper.ThumbnailGenerator'
-    : 'https://apps.apple.com/app/id6753228851?action=write-review';
+    ? 'https://play.google.com/store/apps/details?id=com.watsonsweb.icongenerator'
+    : 'https://apps.apple.com/app/id6755940269?action=write-review';
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -884,7 +884,7 @@ export default function ProfileScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.aboutModal}>
             <ScrollView showsVerticalScrollIndicator={false}>
-              <Text style={styles.aboutTitle}>About AI Thumbnail Generator</Text>
+              <Text style={styles.aboutTitle}>About Ai Icon Generator</Text>
 
               <View style={styles.aboutSection}>
                 <Text style={styles.aboutHeading}>Our Mission</Text>

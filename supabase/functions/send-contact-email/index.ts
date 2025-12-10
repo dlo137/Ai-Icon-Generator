@@ -39,7 +39,7 @@ serve(async (req) => {
         'Authorization': `Bearer ${RESEND_API_KEY}`,
       },
       body: JSON.stringify({
-        from: 'AI Thumbnail Generator <onboarding@resend.dev>',
+        from: 'Ai Icon Generator <onboarding@resend.dev>',
         to: ['slumberhelpdesk@gmail.com'],
         reply_to: email,
         subject: `Contact Form: ${subject}`,

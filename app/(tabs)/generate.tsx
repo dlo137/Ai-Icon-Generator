@@ -585,8 +585,8 @@ export default function GenerateScreen() {
 
     // Words that should be removed from anywhere in the title
     const fillerWords = [
-      'thumbnail', 'youtube thumbnail', 'image', 'picture', 'photo',
-      'for youtube', 'for my', 'for a', 'that shows', 'that has',
+      'icon', 'app icon', 'image', 'picture', 'photo',
+      'for app', 'for my', 'for a', 'that shows', 'that has',
       'featuring', 'with a', 'with an'
     ];
 

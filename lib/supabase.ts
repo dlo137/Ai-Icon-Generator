@@ -11,7 +11,7 @@ const SUPABASE_ANON_KEY = Constants.expoConfig?.extra?.EXPO_PUBLIC_SUPABASE_ANON
 
 // This is the URL Supabase should bounce back to after OAuth/magic link.
 // Always use custom scheme - works in development and production
-const scheme = Constants.expoConfig?.scheme || 'thumbnailgen';
+const scheme = Constants.expoConfig?.scheme || 'icongenerator';
 export const redirectTo = `${scheme}://auth/callback`;
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {

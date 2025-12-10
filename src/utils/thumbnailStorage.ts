@@ -377,8 +377,8 @@ const generateTitle = (prompt: string): string => {
 
   // Stop words to filter out
   const stopWords = new Set([
-    'the', 'and', 'for', 'with', 'about', 'thumbnail', 'image', 'picture',
-    'create', 'make', 'generate', 'show', 'display', 'featuring', 'youtube',
+    'the', 'and', 'for', 'with', 'about', 'icon', 'image', 'picture',
+    'create', 'make', 'generate', 'show', 'display', 'featuring', 'app',
     'that', 'this', 'has', 'have', 'are', 'was', 'were', 'been', 'being',
     'a', 'an', 'of', 'in', 'on', 'at', 'to', 'from', 'by', 'as'
   ]);
