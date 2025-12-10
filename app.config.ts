@@ -32,7 +32,7 @@ export default {
     },
     ios: {
       supportsTablet: true,
-      bundleIdentifier: "com.watsonsweb.AI-Icon",
+      bundleIdentifier: "com.watson.AI-Icon-Generator",
       buildNumber: "15",
       icon: "./assets/icon.png",
       infoPlist: {
