@@ -58,9 +58,9 @@ export default function ProfileScreen() {
   const [currentPurchaseAttempt, setCurrentPurchaseAttempt] = useState<'monthly' | 'yearly' | 'weekly' | null>(null);
 
   const PRODUCT_IDS = {
-    yearly: 'thumbnail.yearly',
-    monthly: 'thumbnail.monthly',
-    weekly: 'thumbnail.weekly',
+    yearly: 'icon.yearly',
+    monthly: 'icon.monthly',
+    weekly: 'icon.weekly',
   };
 
   const isIAPAvailable = IAPService.isAvailable();
@@ -147,11 +147,11 @@ export default function ProfileScreen() {
     let price = '';
     let planName = currentPlan;
 
-    if (subscriptionInfo.productId === 'thumbnail.yearly') {
+    if (subscriptionInfo.productId === 'icon.yearly') {
       price = '$59.99/year';
-    } else if (subscriptionInfo.productId === 'thumbnail.monthly') {
+    } else if (subscriptionInfo.productId === 'icon.monthly') {
       price = '$5.99/month';
-    } else if (subscriptionInfo.productId === 'thumbnail.weekly') {
+    } else if (subscriptionInfo.productId === 'icon.weekly') {
       price = '$2.99/week';
     }
 
@@ -326,13 +326,13 @@ export default function ProfileScreen() {
         let planName = '';
         let price = '';
 
-        if (subInfo.productId === 'thumbnail.yearly') {
+        if (subInfo.productId === 'icon.yearly') {
           planName = 'Yearly Plan';
           price = '$59.99/year';
-        } else if (subInfo.productId === 'thumbnail.monthly') {
+        } else if (subInfo.productId === 'icon.monthly') {
           planName = 'Monthly Plan';
           price = '$5.99/month';
-        } else if (subInfo.productId === 'thumbnail.weekly') {
+        } else if (subInfo.productId === 'icon.weekly') {
           planName = 'Weekly Plan';
           price = '$2.99/week';
         } else {

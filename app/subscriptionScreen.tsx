@@ -7,13 +7,13 @@ import IAPService from '../services/IAPService';
 
 // Platform-specific product IDs
 const PRODUCT_IDS = Platform.OS === 'ios' ? {
-  yearly: 'thumbnail.yearly',
-  monthly: 'thumbnail.monthly',
-  weekly: 'thumbnail.weekly',
+  yearly: 'icon.yearly',
+  monthly: 'icon.monthly',
+  weekly: 'icon.weekly',
 } : {
-  yearly: 'ai.thumbnail.pro:yearly',
-  monthly: 'ai.thumbnail.pro:monthly',
-  weekly: 'ai.thumbnail.pro:weekly',
+  yearly: 'ai.icon.pro:yearly',
+  monthly: 'ai.icon.pro:monthly',
+  weekly: 'ai.icon.pro:weekly',
 };
 
 export default function SubscriptionScreen() {
