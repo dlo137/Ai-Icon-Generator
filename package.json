@@ -48,9 +48,11 @@
     "semver": "^7.7.3"
   },
   "devDependencies": {
-    "@expo/metro-config": "^54.0.5",
     "@types/react": "~19.1.0",
     "typescript": "~5.9.2"
+  },
+  "overrides": {
+    "@expo/fingerprint": "0.15.4"
   },
   "private": true
 }
