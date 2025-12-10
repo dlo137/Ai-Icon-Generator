@@ -216,7 +216,7 @@ const styles = StyleSheet.create({
   },
   thumbnailPlaceholder: {
     width: '65%',
-    aspectRatio: 16/9,
+    aspectRatio: 1, // Square 1:1 ratio for icons
     backgroundColor: '#3a3f47',
     borderRadius: 8,
     marginBottom: 16,

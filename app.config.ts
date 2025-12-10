@@ -10,7 +10,9 @@ export default {
     userInterfaceStyle: "light",
     scheme: "thumbnailgen",
     plugins: [
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-localization",
+      "expo-router"
     ],
     updates: {
       fallbackToCacheTimeout: 0,
@@ -23,7 +25,7 @@ export default {
     },
     extra: {
       eas: {
-        projectId: "c1df1c80-b01c-45b2-bd7f-87e1a6b25e15"
+        projectId: "476b1941-3351-4a55-9b46-10739188f29c"
       },
       EXPO_PUBLIC_SUPABASE_URL: process.env.EXPO_PUBLIC_SUPABASE_URL,
       EXPO_PUBLIC_SUPABASE_ANON_KEY: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,

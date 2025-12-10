@@ -323,21 +323,22 @@ export default function GenerateScreen() {
 
       // Download the image to local filesystem
       const filename = `icon_${Date.now()}.png`;
-      const docDir = (FileSystem as any).documentDirectory;
+      const docDir = FileSystem.documentDirectory;
       if (!docDir) {
         throw new Error('Document directory not available');
       }
       const localUri = `${docDir}${filename}`;
 
-      const { uri } = await (FileSystem as any).downloadAsync(generatedImageUrl, localUri);
+      const downloadResult = await FileSystem.downloadAsync(generatedImageUrl, localUri);
 
       // Save to photo library
-      const asset = await MediaLibrary.createAssetAsync(uri);
+      const asset = await MediaLibrary.createAssetAsync(downloadResult.uri);
       await MediaLibrary.createAlbumAsync('AI Icons', asset, false);
 
       Alert.alert('Success', 'Icon saved to your photo library!');
 
     } catch (error) {
+      console.error('Download error:', error);
       Alert.alert('Error', 'Failed to save icon. Please try again.');
     }
   };
@@ -828,6 +829,33 @@ export default function GenerateScreen() {
     { id: 'colorful', label: 'Colorful' },
   ];
 
+  // Generate randomized preset prompts for variety
+  const getRandomizedPresetPrompt = (category: 'finance' | 'fitness' | 'photo'): string => {
+    const random = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)];
+
+    if (category === 'finance') {
+      const symbols = ['3D dollar sign ($) with metallic shine', 'bold upward trending arrow with glow effect', 'layered credit card stack with depth', 'geometric shield with inner glow', 'glossy coin with reflections', 'abstract currency symbol with shadow', 'modern bank vault icon', 'dynamic stock chart with bright highlights'];
+      const colors = ['emerald green to deep teal with gold accents', 'royal blue to midnight navy with silver highlights', 'rich gold to bronze with warm orange glow', 'neon green to dark forest with bright edges', 'cyan to deep blue with electric highlights', 'purple to deep indigo with gold shimmer'];
+      const effects = ['Add subtle 3D depth, inner shadows, and a soft outer glow', 'Use glassmorphism with frosted glass effect and light reflections', 'Apply dramatic lighting with bright highlights and deep shadows', 'Include geometric patterns in background with layered depth', 'Add metallic sheen with gradient overlays and shine effects', 'Use neumorphism with soft shadows and raised elements'];
+
+      return `Create a stunning, modern finance app icon with ONE bold, centered ${random(symbols)}. ${random(effects)}. Background must be a rich, multi-layered gradient (${random(colors)}) that completely fills the canvas edge-to-edge with NO borders. Use bold, thick lines, high contrast, and premium visual treatment. Icon should look luxurious, trustworthy, and eye-catching like top-tier finance apps (Robinhood, Cash App, Revolut). Must be instantly recognizable at tiny sizes.`;
+    }
+    else if (category === 'fitness') {
+      const symbols = ['sleek 3D dumbbell with chrome finish and soft shadows', 'elegant heart rate pulse wave with smooth curves', 'minimalist geometric flame with gradient layers', 'modern abstract figure in motion with flowing lines', 'refined circular timer with glowing segments', 'stylized lightning bolt with smooth gradients', 'sophisticated hexagonal pattern with centered fitness icon', 'graceful curved swoosh around abstract symbol', 'premium kettlebell silhouette with metallic sheen'];
+      const colors = ['deep coral to vibrant orange with soft pink highlights', 'electric cyan to royal blue with subtle purple undertones', 'sunset gradient from warm peach to deep magenta', 'sophisticated black to emerald green with neon accents', 'modern teal to deep navy with bright cyan edges', 'premium rose gold to deep burgundy with copper shimmer', 'sleek midnight blue to hot pink with electric glow'];
+      const effects = ['Use smooth 3D depth with soft shadows, subtle highlights, and polished surfaces', 'Apply elegant glassmorphism with frosted overlay, light refraction, and depth layers', 'Add sophisticated neon outlines with soft inner glow and gradient fills', 'Include clean geometric patterns with layered circles, sharp lines, and modern spacing', 'Use premium gradient mesh with smooth color transitions and luminous highlights', 'Apply refined neumorphic style with elevated elements and ambient lighting', 'Add dynamic radial gradients emanating from center with smooth feathered edges'];
+
+      return `Create a stunning, premium fitness app icon with ONE bold, centered ${random(symbols)}. ${random(effects)}. Background must be a beautiful, sophisticated gradient (${random(colors)}) that completely fills the canvas edge-to-edge with NO borders. Design should balance energy with elegance—modern, sleek, and motivating like luxury fitness brands (Peloton, Apple Fitness+, Nike Training Club). Use clean lines, smooth curves, and refined visual hierarchy. Icon must feel premium, inspiring, and aesthetically beautiful at any size.`;
+    }
+    else { // photo
+      const symbols = ['stylized camera with lens flare effect', 'circular aperture with rainbow refraction', 'layered film frames with depth', 'modern lens with gradient rings', 'geometric shutter with spinning effect', 'artistic gallery grid with perspective', 'abstract photo mountains with vibrant sky', 'bokeh circles around camera icon', 'prismatic crystal camera shape'];
+      const colors = ['vivid purple to hot pink with coral highlights', 'sunset orange to magenta with yellow accents', 'electric blue to cyan with purple undertones', 'deep indigo to violet with pink shimmer', 'holographic rainbow gradient with multiple hues', 'coral pink to deep purple with gold sparkles'];
+      const effects = ['Add chromatic aberration, lens flare, and light leaks', 'Use iridescent holographic effects with color shifting', 'Apply soft focus blur with sharp center and glowing edges', 'Include bokeh circles, light particles, and dreamy atmosphere', 'Add prismatic color splits and rainbow refractions', 'Use layered depth with foreground elements and atmospheric perspective'];
+
+      return `Create a gorgeous, artistic photo app icon with ONE bold, centered ${random(symbols)}. ${random(effects)}. Background must be a stunning, vibrant gradient (${random(colors)}) that completely fills the canvas edge-to-edge with NO borders. Design should feel creative, modern, and visually captivating like premium photo apps (VSCO, Lightroom, Instagram). Use smooth curves, artistic flair, and rich visual depth. Must be beautiful and memorable at any size.`;
+    }
+  };
+
   const handleGenerate = async (overrideTopic?: string) => {
     const topicToUse = overrideTopic || topic;
 
@@ -1257,24 +1285,24 @@ export default function GenerateScreen() {
         <View style={styles.suggestionContainer}>
           <TouchableOpacity
             style={styles.suggestionButton}
-            onPress={() => handleGenerate('Tech Review')}
+            onPress={() => handleGenerate(getRandomizedPresetPrompt('finance'))}
             activeOpacity={0.7}
           >
-            <Text style={styles.suggestionText} numberOfLines={1}>Tech Review</Text>
+            <Text style={styles.suggestionText} numberOfLines={1}>Finance</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.suggestionButton}
-            onPress={() => handleGenerate('Podcast')}
+            onPress={() => handleGenerate(getRandomizedPresetPrompt('fitness'))}
             activeOpacity={0.7}
           >
-            <Text style={styles.suggestionText} numberOfLines={1}>Podcast</Text>
+            <Text style={styles.suggestionText} numberOfLines={1}>Fitness</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.suggestionButton}
-            onPress={() => handleGenerate('Gamer vs Gamer')}
+            onPress={() => handleGenerate(getRandomizedPresetPrompt('photo'))}
             activeOpacity={0.7}
           >
-            <Text style={styles.suggestionText} numberOfLines={1}>Gamer vs Gamer</Text>
+            <Text style={styles.suggestionText} numberOfLines={1}>Photo</Text>
           </TouchableOpacity>
         </View>
 

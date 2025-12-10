@@ -49,7 +49,9 @@
       "Bash(if exist nul del nul)",
       "Bash(echo:*)",
       "Bash(del \"C:\\Users\\aidaw\\Desktop\\Code\\ThumbnailGenerator\\nul\")",
-      "Bash(git config:*)"
+      "Bash(git config:*)",
+      "Bash(npm dedupe:*)",
+      "Bash(tail:*)"
     ],
     "deny": [],
     "ask": []

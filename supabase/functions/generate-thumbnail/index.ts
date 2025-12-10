@@ -273,12 +273,20 @@ async function callGeminiImagePreview(prompt: string, subjectImageUrl?: string, 
 
   const appIconRules = `PROFESSIONAL APP ICON DESIGN STANDARDS (obey strictly):
 
+CRITICAL - FILL ENTIRE CANVAS:
+• ABSOLUTELY NO white borders, white padding, or white margins around the icon
+• The background color/gradient MUST extend to ALL FOUR edges (top, bottom, left, right)
+• Fill the ENTIRE 1024×1024 pixel canvas completely - edge to edge
+• Do NOT add any padding, margins, or empty space around the design
+• The background is part of the icon - it must reach every edge
+
 TECHNICAL REQUIREMENTS:
 • 1024×1024 pixels, perfect square 1:1 aspect ratio
-• Full-bleed design: background must touch all four canvas edges
-• Rounded-rectangle safe zone: keep important elements away from corners (10-15% margin from edges)
+• Full-bleed design: background extends to canvas edges
+• Rounded-rectangle safe zone: keep important elements 10-15% from edges (but background still fills edges)
 • NO borders, frames, strokes, outlines, vignettes, or drop-shadow rims
 • NO black/white bars or letterboxing
+• NO white background unless that's the intentional icon background color
 
 DESIGN PRINCIPLES:
 • NO people or faces - focus on objects, symbols, or abstract concepts
@@ -286,7 +294,7 @@ DESIGN PRINCIPLES:
 • Minimalistic composition - remove unnecessary details
 • Bold, clean shapes with sharp edges
 • Strong visual contrast for instant recognition
-• Smooth gradients or flat-color backgrounds
+• Use colored or gradient backgrounds that fill the entire canvas
 • Symmetrical and balanced composition
 • Must be recognizable at small sizes (as small as 29x29px)
 
@@ -294,8 +302,9 @@ AESTHETIC:
 • Modern iOS/Android app store quality
 • Premium, polished, high-end look
 • Consistent lighting and shadows
-• Professional color palette
-• Clean, crisp edges`;
+• Professional color palette with full-canvas backgrounds
+• Clean, crisp edges
+• Background color extends to all edges - no white padding`;
 
   if (baseImageUrl) {
     promptText = `${appIconRules}
@@ -307,7 +316,11 @@ User request: ${prompt}`;
 
 Create a professional app icon based on this concept: ${prompt}
 
-Remember: No people/faces, one clear centered symbol, minimalistic, bold shapes, strong contrast, recognizable at small sizes.`;
+CRITICAL REMINDERS:
+- Fill the ENTIRE 1024x1024 canvas with your design - NO white borders or padding
+- Background color/gradient must extend to ALL FOUR edges
+- No people/faces, one clear centered symbol, minimalistic
+- Bold shapes, strong contrast, recognizable at tiny sizes`;
   }
 
   const parts: any[] = [{ text: promptText }];
@@ -377,7 +390,7 @@ Remember: No people/faces, one clear centered symbol, minimalistic, bold shapes,
       },
       systemInstruction: {
         parts: [{
-          text: "You are an expert app icon designer specializing in iOS and Android app store standards. Create professional, minimalistic icons in 1024x1024 pixels with strong visual impact. Focus on single, clear symbols without people or faces. Design for instant recognition at small sizes with bold shapes, strong contrast, and polished aesthetics. Always output perfect squares with rounded-rectangle safe zones."
+          text: "You are an expert app icon designer specializing in iOS and Android app store standards. Create professional, minimalistic icons in 1024x1024 pixels with strong visual impact. CRITICAL: The background must fill the ENTIRE canvas edge-to-edge with NO white borders or padding. Focus on single, clear symbols without people or faces. Use colored or gradient backgrounds that extend to all edges. Design for instant recognition at small sizes with bold shapes, strong contrast, and polished aesthetics."
         }]
       }
     }),

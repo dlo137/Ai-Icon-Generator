@@ -50,7 +50,7 @@ export default function GeneratedThumbnail({ imageUrl, prompt, onEdit, style, te
 
       // Download the image to local filesystem
       const filename = `thumbnail_${Date.now()}.png`;
-      const docDir = (FileSystem as any).documentDirectory;
+      const docDir = FileSystem.documentDirectory;
       if (!docDir) {
         throw new Error('Document directory not available');
       }
@@ -59,10 +59,10 @@ export default function GeneratedThumbnail({ imageUrl, prompt, onEdit, style, te
       console.log('Downloading image from:', imageUrl);
       console.log('Saving to local path:', localUri);
 
-      const { uri } = await (FileSystem as any).downloadAsync(imageUrl, localUri);
+      const downloadResult = await FileSystem.downloadAsync(imageUrl, localUri);
 
       // Save to photo library
-      const asset = await MediaLibrary.createAssetAsync(uri);
+      const asset = await MediaLibrary.createAssetAsync(downloadResult.uri);
       await MediaLibrary.createAlbumAsync('AI Thumbnails', asset, false);
 
       Alert.alert('Success', 'Thumbnail saved to your photo library!');

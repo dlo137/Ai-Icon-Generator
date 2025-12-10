@@ -110,10 +110,15 @@ export async function getSubscriptionInfo(): Promise<SubscriptionData | null> {
       .from('profiles')
       .select('subscription_plan, subscription_id, price, purchase_time, is_pro_version, is_trial_version, trial_end_date')
       .eq('id', user.id)
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('Error fetching subscription info:', error);
+      return null;
+    }
+
+    // If no profile exists, return null (no error)
+    if (!data) {
       return null;
     }
 
