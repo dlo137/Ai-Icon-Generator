@@ -4,7 +4,7 @@ export default {
   expo: {
     name: "Ai Icon Generator",
     slug: "ai-icon-generator",
-    version: "1.0.16",
+    version: "1.0.17",
     orientation: "portrait",
     icon: "./assets/icon.png",
     userInterfaceStyle: "light",
@@ -33,7 +33,7 @@ export default {
     ios: {
       supportsTablet: true,
       bundleIdentifier: "com.watsonsweb.thumbnail-generator",
-      buildNumber: "14",
+      buildNumber: "15",
       icon: "./assets/icon.png",
       infoPlist: {
         ITSAppUsesNonExemptEncryption: false,
@@ -44,7 +44,7 @@ export default {
     },
     android: {
       package: "com.aidawrapper.ThumbnailGenerator",
-      versionCode: 14,
+      versionCode: 15,
       adaptiveIcon: {
         foregroundImage: "./assets/adaptive-icon.png",
         backgroundColor: "#ffffff"
