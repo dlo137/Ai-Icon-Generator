@@ -86,29 +86,8 @@ export const getCredits = async (): Promise<CreditsInfo> => {
             max: data.max
           };
 
-          // If credits are 0 but user has subscription, force reset (only once)
-          if (credits.current === 0 && credits.max === 0 && supabaseSubInfo?.is_pro_version && !isResetting) {
-            isResetting = true;
-            console.log('Credits are 0 but user has subscription, forcing reset...');
-
-            const { data: resetData, error: resetError } = await supabase.functions.invoke('manage-credits', {
-              body: { action: 'reset' }
-            });
-
-            isResetting = false;
-
-            if (!resetError && resetData) {
-              const newCredits: CreditsInfo = {
-                current: resetData.current,
-                max: resetData.max
-              };
-              console.log('Reset successful, new credits:', newCredits);
-              await saveCredits(newCredits);
-              return newCredits;
-            } else {
-              console.error('Reset failed:', resetError);
-            }
-          }
+          // The manage-credits edge function already handles automatic resets based on time
+          // No need to force reset here - just return what the server gives us
 
           // Cache locally for offline access
           await saveCredits(credits);

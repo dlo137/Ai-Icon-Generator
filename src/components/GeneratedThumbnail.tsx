@@ -1,6 +1,6 @@
 import { View, TouchableOpacity, Image, Text, Alert } from 'react-native';
 import * as MediaLibrary from 'expo-media-library';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { saveThumbnail } from '../utils/thumbnailStorage';
 import Svg, { Path } from 'react-native-svg';
 
@@ -41,29 +41,32 @@ export default function GeneratedThumbnail({ imageUrl, prompt, onEdit, style, te
     }
 
     try {
-      // Request permissions
-      const { status } = await MediaLibrary.requestPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission Required', 'Please grant photo library access to save thumbnails');
+      // Request media library permissions
+      const permissionResult = await MediaLibrary.requestPermissionsAsync();
+      if (!permissionResult || permissionResult.status !== 'granted') {
+        Alert.alert('Permission Denied', 'We need permission to save images to your photo library');
         return;
       }
 
-      // Download the image to local filesystem
-      const filename = `thumbnail_${Date.now()}.png`;
-      const docDir = FileSystem.documentDirectory;
-      if (!docDir) {
-        throw new Error('Document directory not available');
+      // If the image is already local, just save it directly
+      if (imageUrl.startsWith('file://')) {
+        const asset = await MediaLibrary.createAssetAsync(imageUrl);
+        await MediaLibrary.createAlbumAsync('Icons', asset, false);
+        Alert.alert('Success', 'Icon saved to your photo library!');
+        return;
       }
-      const localUri = `${docDir}${filename}`;
 
-      console.log('Downloading image from:', imageUrl);
-      console.log('Saving to local path:', localUri);
+      // Download the image to a temporary location if it's a remote URL
+      const fileUri = FileSystem.documentDirectory + `icon_${Date.now()}.jpg`;
+      const downloadResult = await FileSystem.downloadAsync(imageUrl, fileUri);
 
-      const downloadResult = await FileSystem.downloadAsync(imageUrl, localUri);
+      if (downloadResult.status !== 200) {
+        throw new Error('Failed to download image');
+      }
 
-      // Save to photo library
+      // Save to media library
       const asset = await MediaLibrary.createAssetAsync(downloadResult.uri);
-      await MediaLibrary.createAlbumAsync('AI Icons', asset, false);
+      await MediaLibrary.createAlbumAsync('Icons', asset, false);
 
       Alert.alert('Success', 'Icon saved to your photo library!');
 

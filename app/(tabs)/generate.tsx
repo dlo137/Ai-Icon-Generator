@@ -415,16 +415,16 @@ export default function GenerateScreen() {
       return;
     }
 
-    // Check credits before generating edit - DISABLED FOR TESTING
-    // const credits = await getCredits();
-    // if (credits.current <= 0) {
-    //   Alert.alert(
-    //     'No Credits',
-    //     'You have run out of credits. Please upgrade your plan to continue editing icons.',
-    //     [{ text: 'OK' }]
-    //   );
-    //   return;
-    // }
+    // Check credits before generating edit
+    const creditsCheck = await getCredits();
+    if (creditsCheck.current <= 0) {
+      Alert.alert(
+        'No Credits Remaining',
+        'You have used all your credits. Your credits will reset based on your subscription plan.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
 
     setIsModalGenerating(true);
     Keyboard.dismiss();
@@ -513,8 +513,8 @@ export default function GenerateScreen() {
       });
       setModalPrompt('');
 
-      // Deduct 1 credit for successful edit (only 1 image generated in edit mode) - DISABLED FOR TESTING
-      // await deductCredit(1);
+      // Deduct 1 credit for successful edit (only 1 image generated in edit mode)
+      await deductCredit(1);
 
       // Refresh credits display immediately
       await refreshCredits();
@@ -864,16 +864,16 @@ export default function GenerateScreen() {
       return;
     }
 
-    // Check credits before generating - DISABLED FOR TESTING
-    // const credits = await getCredits();
-    // if (credits.current <= 0) {
-    //   Alert.alert(
-    //     'Subscription Required',
-    //     'You need an active subscription to generate icons. Please subscribe to continue.',
-    //     [{ text: 'OK' }]
-    //   );
-    //   return;
-    // }
+    // Check credits before generating (need 3 credits for 3 images)
+    const creditsCheck = await getCredits();
+    if (creditsCheck.current < 3) {
+      Alert.alert(
+        'Insufficient Credits',
+        `You need 3 credits to generate images (you have ${creditsCheck.current}). Your credits will reset based on your subscription plan.`,
+        [{ text: 'OK' }]
+      );
+      return;
+    }
 
     // Store the prompt for title display BEFORE clearing
     let promptToUse = topicToUse.trim();
@@ -937,33 +937,39 @@ export default function GenerateScreen() {
         return;
       }
 
-      // Handle single image response (new format)
-      if (data?.imageUrl || data?.url) {
-        const imageUrl = data.imageUrl || data.url;
+      // Handle 3 variations response
+      if (data?.variation1 || data?.variation2 || data?.variation3) {
+        const url1 = data.variation1?.imageUrl || data.variation1?.url;
+        const url2 = data.variation2?.imageUrl || data.variation2?.url;
+        const url3 = data.variation3?.imageUrl || data.variation3?.url;
 
-        // Set the generated image
-        setGeneratedImageUrl(imageUrl);
+        // Set the generated images
+        setGeneratedImageUrl(url1 || '');
+        setGeneratedImageUrl2(url2 || '');
+        setGeneratedImageUrl3(url3 || '');
 
         // Automatically add to history (not favorited) - silently fail if not authenticated
-        try {
-          await addThumbnailToHistory(promptToUse, imageUrl);
-        } catch (historyError) {
-          console.log('Skipping history save (not authenticated):', historyError);
+        if (url1) {
+          try {
+            await addThumbnailToHistory(promptToUse, url1);
+          } catch (historyError) {
+            console.log('Skipping history save (not authenticated):', historyError);
+          }
         }
 
-        // Add to all generations list
+        // Add to all generations list with all 3 variations
         const newGeneration = {
           id: Date.now().toString(),
           prompt: promptToUse,
-          url1: imageUrl,
-          url2: undefined,
-          url3: undefined,
+          url1: url1,
+          url2: url2,
+          url3: url3,
           timestamp: Date.now(),
         };
         setAllGenerations(prev => [newGeneration, ...prev]);
 
-        // Deduct 1 credit for successful generation - DISABLED FOR TESTING
-        // await deductCredit(1);
+        // Deduct 3 credits for successful generation (3 images = 3 credits)
+        await deductCredit(3);
 
         // Refresh credits display immediately
         await refreshCredits();
@@ -975,12 +981,31 @@ export default function GenerateScreen() {
           setReferenceImages([]);
           setReferenceImageUrls([]);
         }
-      } else if (data?.imageUrl) {
-        // Fallback for backwards compatibility
-        setGeneratedImageUrl(data.imageUrl);
-        setGeneratedImageUrl2(''); // No second variation
+      } else if (data?.imageUrl || data?.url) {
+        // Fallback for single image (backwards compatibility)
+        const imageUrl = data.imageUrl || data.url;
+        setGeneratedImageUrl(imageUrl);
+        setGeneratedImageUrl2('');
+        setGeneratedImageUrl3('');
 
-        // Clear subject and reference images after successful generation
+        try {
+          await addThumbnailToHistory(promptToUse, imageUrl);
+        } catch (historyError) {
+          console.log('Skipping history save (not authenticated):', historyError);
+        }
+
+        const newGeneration = {
+          id: Date.now().toString(),
+          prompt: promptToUse,
+          url1: imageUrl,
+          url2: undefined,
+          url3: undefined,
+          timestamp: Date.now(),
+        };
+        setAllGenerations(prev => [newGeneration, ...prev]);
+
+        await refreshCredits();
+
         if (activeSubjectImageUrl || activeReferenceImageUrls.length > 0) {
           setSubjectImage(null);
           setSubjectImageUrl(null);
@@ -1264,7 +1289,7 @@ export default function GenerateScreen() {
           >
             <View style={styles.actionIconWrap}><Text style={styles.actionIcon}>👤</Text></View>
             <Text style={styles.actionTitle}>Add a subject</Text>
-            <Text style={styles.actionSubtitle}>Include a person or object</Text>
+            <Text style={styles.actionSubtitle}>Include an object</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -1844,16 +1869,16 @@ export default function GenerateScreen() {
                     onPress={async () => {
                       if (!textSticker || imageContainerDimensions.width === 0 || imageContainerDimensions.height === 0) return;
 
-                      // Check credits before applying text - DISABLED FOR TESTING
-                      // const credits = await getCredits();
-                      // if (credits.current <= 0) {
-                      //   Alert.alert(
-                      //     'No Credits',
-                      //     'You have run out of credits. Please upgrade your plan to continue editing icons.',
-                      //     [{ text: 'OK' }]
-                      //   );
-                      //   return;
-                      // }
+                      // Check credits before applying text
+                      const creditsCheck = await getCredits();
+                      if (creditsCheck.current <= 0) {
+                        Alert.alert(
+                          'No Credits Remaining',
+                          'You have used all your credits. Your credits will reset based on your subscription plan.',
+                          [{ text: 'OK' }]
+                        );
+                        return;
+                      }
 
                       try {
                         setIsModalGenerating(true);
@@ -1927,8 +1952,8 @@ export default function GenerateScreen() {
                           }
                         }
 
-                        // Deduct 1 credit for text overlay application (count as image generation) - DISABLED FOR TESTING
-                        // await deductCredit(1);
+                        // Deduct 1 credit for text overlay application (count as image generation)
+                        await deductCredit(1);
 
                         // Refresh credits display immediately
                         await refreshCredits();

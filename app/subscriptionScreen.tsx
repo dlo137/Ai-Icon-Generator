@@ -311,7 +311,7 @@ export default function SubscriptionScreen() {
           <View style={styles.logoGlow}>
             <View style={styles.logo}>
               <Image
-                source={require('../assets/Thumbnail-Icon2.png')}
+                source={require('../assets/icon.png')}
                 style={styles.logoImage}
                 resizeMode="contain"
               />
@@ -413,7 +413,7 @@ export default function SubscriptionScreen() {
       </View>
 
       {/* Debug Panel */}
-      {/* {showDebug && (
+      {showDebug && (
         <View style={styles.debugPanel}>
           <View style={styles.debugHeader}>
             <Text style={styles.debugTitle}>🔧 IAP Debug Monitor</Text>
@@ -433,6 +433,9 @@ export default function SubscriptionScreen() {
 
             <View style={styles.debugSection}>
               <Text style={styles.debugSectionTitle}>Connection</Text>
+              <Text style={styles.debugText}>
+                Mode: {debugInfo.connectionStatus?.isDevMode ? '🧪 DEVELOPMENT' : '🚀 PRODUCTION'}
+              </Text>
               <Text style={styles.debugText}>
                 IAP Available: {isIAPAvailable ? '✅' : '❌'}
               </Text>
@@ -458,6 +461,26 @@ export default function SubscriptionScreen() {
               <Text style={styles.debugText}>
                 Products Loaded: {products.length}
               </Text>
+            </View>
+
+            <View style={styles.debugSection}>
+              <Text style={styles.debugSectionTitle}>Product IDs</Text>
+              <Text style={styles.debugText}>
+                Platform: {Platform.OS}
+              </Text>
+              <Text style={styles.debugText}>
+                Expected: {PRODUCT_IDS[selectedPlan]}
+              </Text>
+              {products.length > 0 && (
+                <View style={{ marginTop: 8 }}>
+                  <Text style={styles.debugTextSmall}>Available Products:</Text>
+                  {products.map(p => (
+                    <Text key={p.productId} style={styles.debugText}>
+                      • {p.productId}
+                    </Text>
+                  ))}
+                </View>
+              )}
             </View>
 
             {debugInfo.lastPurchaseResult && (
@@ -491,19 +514,28 @@ export default function SubscriptionScreen() {
             >
               <Text style={styles.debugButtonText}>🔄 Refresh Debug Info</Text>
             </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.debugButton, { backgroundColor: '#16a34a' }]}
+              onPress={async () => {
+                await fetchProducts(true);
+              }}
+            >
+              <Text style={styles.debugButtonText}>🔄 Retry Load Products</Text>
+            </TouchableOpacity>
           </ScrollView>
         </View>
-      )} */}
+      )}
 
       {/* Show Debug Button when panel is hidden */}
-      {/* {!showDebug && (
+      {!showDebug && (
         <TouchableOpacity
           style={styles.showDebugButton}
           onPress={() => setShowDebug(true)}
         >
           <Text style={styles.showDebugText}>🔧</Text>
         </TouchableOpacity>
-      )} */}
+      )}
     </LinearGradient>
   );
 }
@@ -574,6 +606,7 @@ const styles = StyleSheet.create({
   logoImage: {
     width: 100,
     height: 100,
+    borderRadius: 20,
   },
   header: {
     marginBottom: 40,

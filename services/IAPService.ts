@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Alert, Platform } from 'react-native';
 import { supabase } from '../lib/supabase';
 import * as RNIap from 'react-native-iap';
+import Constants from 'expo-constants';
 import type {
   Product,
   ProductPurchase,
@@ -11,18 +12,28 @@ import type {
 
 // Platform-specific product IDs
 const IOS_PRODUCT_IDS = [
-  'thumbnail.yearly',
-  'thumbnail.monthly',
-  'thumbnail.weekly'
+  'icon.yearly',
+  'icon.monthly',
+  'icon.weekly'
 ];
 
 const ANDROID_PRODUCT_IDS = [
-  'ai.thumbnail.pro:yearly',
-  'ai.thumbnail.pro:monthly',
-  'ai.thumbnail.pro:weekly'
+  'ai.icon.pro:yearly',
+  'ai.icon.pro:monthly',
+  'ai.icon.pro:weekly'
 ];
 
 const INFLIGHT_KEY = 'iapPurchaseInFlight';
+
+// Development mode detection
+const isDevelopment = () => {
+  // Check if running in Expo Go
+  const isExpoGo = Constants.appOwnership === 'expo';
+  // Check if in __DEV__ mode
+  const isDevMode = __DEV__;
+
+  return isExpoGo || isDevMode;
+};
 
 class IAPService {
   private static instance: IAPService;
@@ -37,6 +48,7 @@ class IAPService {
   private purchasePromiseReject: ((reason?: any) => void) | null = null;
   private purchaseUpdateSubscription: any = null;
   private purchaseErrorSubscription: any = null;
+  private isDevMode: boolean = isDevelopment();
 
   private constructor() {}
 
@@ -49,6 +61,14 @@ class IAPService {
 
   async initialize(): Promise<boolean> {
     try {
+      // In development mode, skip real IAP initialization
+      if (this.isDevMode) {
+        console.log('[IAP-SERVICE] 🧪 Running in DEVELOPMENT MODE - Using mock IAP');
+        this.isConnected = true;
+        this.hasListener = true;
+        return true;
+      }
+
       console.log('[IAP-SERVICE] Initializing react-native-iap...');
 
       if (!this.isConnected) {
@@ -238,15 +258,25 @@ class IAPService {
 
         // Update Supabase profile
         const now = new Date().toISOString();
+
+        // Calculate subscription end date based on plan
+        const endDate = new Date();
+        if (planToUse === 'weekly') {
+          endDate.setDate(endDate.getDate() + 7);
+        } else if (planToUse === 'monthly') {
+          endDate.setMonth(endDate.getMonth() + 1);
+        } else if (planToUse === 'yearly') {
+          endDate.setFullYear(endDate.getFullYear() + 1);
+        }
+
         const updateData = {
           subscription_plan: planToUse,
           subscription_id: subscriptionId,
           is_pro_version: true,
-          product_id: purchase.productId,
-          purchase_time: now,
           credits_current: credits_max,
           credits_max: credits_max,
           subscription_start_date: now,
+          subscription_end_date: endDate.toISOString(),
           last_credit_reset: now
         };
 
@@ -308,9 +338,35 @@ class IAPService {
     }
   }
 
+  private getMockProducts(): Product[] {
+    console.log('[IAP-SERVICE] 🧪 Returning mock products for development');
+    const productIds = Platform.OS === 'ios' ? IOS_PRODUCT_IDS : ANDROID_PRODUCT_IDS;
+
+    return productIds.map((productId) => ({
+      productId,
+      title: productId.includes('yearly') ? 'Yearly Plan' :
+             productId.includes('monthly') ? 'Monthly Plan' : 'Weekly Plan',
+      description: 'Mock subscription for development',
+      price: productId.includes('yearly') ? '$59.99' :
+             productId.includes('monthly') ? '$5.99' : '$2.99',
+      currency: 'USD',
+      type: 'subs' as const,
+      localizedPrice: productId.includes('yearly') ? '$59.99' :
+                      productId.includes('monthly') ? '$5.99' : '$2.99',
+      subscriptionPeriodNumberIOS: '1',
+      subscriptionPeriodUnitIOS: productId.includes('yearly') ? 'YEAR' :
+                                 productId.includes('monthly') ? 'MONTH' : 'WEEK',
+    } as Product));
+  }
+
   async getProducts(): Promise<Product[]> {
     if (!this.isConnected) {
       await this.initialize();
+    }
+
+    // In development mode, return mock products
+    if (this.isDevMode) {
+      return this.getMockProducts();
     }
 
     try {
@@ -328,10 +384,108 @@ class IAPService {
     }
   }
 
+  private async simulatePurchase(productId: string): Promise<void> {
+    console.log('[IAP-SERVICE] 🧪 Simulating purchase in development mode:', productId);
+
+    // Simulate a slight delay for realism
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // Determine plan and credits based on productId
+    let planToUse: 'yearly' | 'monthly' | 'weekly' = 'yearly';
+    const productIdLower = productId.toLowerCase();
+
+    if (productIdLower.includes('monthly')) {
+      planToUse = 'monthly';
+    } else if (productIdLower.includes('weekly')) {
+      planToUse = 'weekly';
+    }
+
+    let credits_max = 0;
+    switch (planToUse) {
+      case 'yearly': credits_max = 90; break;
+      case 'monthly': credits_max = 75; break;
+      case 'weekly': credits_max = 10; break;
+    }
+
+    // Get current user
+    const { data: userData } = await supabase.auth.getUser();
+    const userId = userData?.user?.id;
+
+    if (!userId) {
+      console.error('[IAP-SERVICE] 🧪 No user found for mock purchase');
+      throw new Error('User not authenticated');
+    }
+
+    // Update Supabase profile
+    const now = new Date().toISOString();
+    const mockSubscriptionId = `dev_${productId}_${Date.now()}`;
+
+    // Calculate subscription end date based on plan
+    const endDate = new Date();
+    if (planToUse === 'weekly') {
+      endDate.setDate(endDate.getDate() + 7);
+    } else if (planToUse === 'monthly') {
+      endDate.setMonth(endDate.getMonth() + 1);
+    } else if (planToUse === 'yearly') {
+      endDate.setFullYear(endDate.getFullYear() + 1);
+    }
+
+    const updateData = {
+      subscription_plan: planToUse,
+      subscription_id: mockSubscriptionId,
+      is_pro_version: true,
+      credits_current: credits_max,
+      credits_max: credits_max,
+      subscription_start_date: now,
+      subscription_end_date: endDate.toISOString(),
+      last_credit_reset: now
+    };
+
+    console.log('[IAP-SERVICE] 🧪 Updating profile with mock data:', updateData);
+
+    const { error: supabaseError } = await supabase.from('profiles')
+      .update(updateData)
+      .eq('id', userId);
+
+    if (supabaseError) {
+      console.error('[IAP-SERVICE] 🧪 Supabase update error:', supabaseError);
+      throw supabaseError;
+    }
+
+    // Update AsyncStorage
+    await AsyncStorage.multiSet([
+      ['profile.subscription_plan', planToUse],
+      ['profile.subscription_id', mockSubscriptionId],
+      ['profile.is_pro_version', 'true'],
+    ]);
+
+    console.log('[IAP-SERVICE] 🧪 Mock purchase completed successfully!');
+
+    // Trigger debug callback
+    if (this.debugCallback) {
+      this.debugCallback({
+        listenerStatus: 'PURCHASE SUCCESS! ✅ (DEV MODE)',
+        shouldNavigate: true,
+        purchaseComplete: true
+      });
+    }
+  }
+
   async purchaseProduct(productId: string): Promise<void> {
     if (!this.isConnected) {
       console.log('[IAP-SERVICE] Not connected, initializing...');
       await this.initialize();
+    }
+
+    // In development mode, simulate the purchase
+    if (this.isDevMode) {
+      try {
+        await this.simulatePurchase(productId);
+        return;
+      } catch (error) {
+        console.error('[IAP-SERVICE] 🧪 Mock purchase failed:', error);
+        throw error;
+      }
     }
 
     // Track current purchase session
@@ -409,6 +563,12 @@ class IAPService {
       await this.initialize();
     }
 
+    // In development mode, simulate restore
+    if (this.isDevMode) {
+      console.log('[IAP-SERVICE] 🧪 Mock restore in development mode - no purchases to restore');
+      throw new Error('No previous purchases found');
+    }
+
     try {
       await AsyncStorage.setItem(INFLIGHT_KEY, 'true');
       console.log('[IAP-SERVICE] Restoring purchases...');
@@ -459,7 +619,12 @@ class IAPService {
     return {
       isConnected: this.isConnected,
       hasListener: this.hasListener,
+      isDevMode: this.isDevMode,
     };
+  }
+
+  isDevelopmentMode(): boolean {
+    return this.isDevMode;
   }
 
   async cleanup() {

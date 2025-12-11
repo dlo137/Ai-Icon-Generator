@@ -6,31 +6,70 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Credit reset logic
+// Credit reset logic - resets based on subscription cycle from purchase date
 const shouldResetCredits = (profile: any): boolean => {
   if (!profile.is_pro_version || !profile.subscription_plan || !profile.subscription_start_date) {
+    console.log('[RESET CHECK] Missing required fields for reset check');
     return false;
   }
 
   const now = new Date();
-  const startDate = new Date(profile.subscription_start_date);
+  const purchaseDate = new Date(profile.subscription_start_date);
   const lastResetDate = profile.last_credit_reset
     ? new Date(profile.last_credit_reset)
-    : startDate;
+    : purchaseDate;
+
+  // Validate dates
+  if (isNaN(purchaseDate.getTime()) || isNaN(lastResetDate.getTime())) {
+    console.error('[RESET CHECK] Invalid dates detected');
+    return false;
+  }
 
   const millisecondsElapsed = now.getTime() - lastResetDate.getTime();
   const daysElapsed = millisecondsElapsed / (1000 * 60 * 60 * 24);
 
+  console.log(`[RESET CHECK] Plan: ${profile.subscription_plan}, Days elapsed: ${daysElapsed.toFixed(2)}, Last reset: ${lastResetDate.toISOString()}`);
+
   switch (profile.subscription_plan) {
     case 'weekly':
-      return daysElapsed >= 7;
+      // Reset every 7 days from last reset
+      const shouldResetWeekly = daysElapsed >= 7;
+      console.log(`[RESET CHECK] Weekly - Should reset: ${shouldResetWeekly}`);
+      return shouldResetWeekly;
+
     case 'monthly':
     case 'yearly':
-      // Both monthly and yearly plans reset every 30 days
-      const monthsSinceReset = (now.getFullYear() - lastResetDate.getFullYear()) * 12 +
-                               (now.getMonth() - lastResetDate.getMonth());
-      return monthsSinceReset >= 1 || daysElapsed >= 30;
+      // Reset every month from last reset
+      // Calculate if a full month has passed
+      const lastResetMonth = lastResetDate.getMonth();
+      const lastResetYear = lastResetDate.getFullYear();
+      const lastResetDay = lastResetDate.getDate();
+
+      const currentMonth = now.getMonth();
+      const currentYear = now.getFullYear();
+      const currentDay = now.getDate();
+
+      // Calculate total months between dates
+      const monthsDiff = (currentYear - lastResetYear) * 12 + (currentMonth - lastResetMonth);
+
+      console.log(`[RESET CHECK] Monthly - Months diff: ${monthsDiff}, Last reset day: ${lastResetDay}, Current day: ${currentDay}`);
+
+      // Reset if:
+      // 1. More than 1 month has passed, OR
+      // 2. Exactly 1 month passed AND we're on or past the reset day
+      if (monthsDiff > 1) {
+        console.log('[RESET CHECK] Monthly - More than 1 month passed, resetting');
+        return true;
+      } else if (monthsDiff === 1 && currentDay >= lastResetDay) {
+        console.log('[RESET CHECK] Monthly - 1 month passed and past reset day, resetting');
+        return true;
+      } else {
+        console.log('[RESET CHECK] Monthly - Not time to reset yet');
+        return false;
+      }
+
     default:
+      console.log('[RESET CHECK] Unknown plan type');
       return false;
   }
 };
@@ -102,12 +141,25 @@ serve(async (req) => {
       console.log('Auto-resetting credits based on subscription cycle')
       const resetMaxCredits = getCreditsForPlan(profile.subscription_plan);
 
+      // Calculate new subscription end date
+      const newEndDate = new Date();
+      if (profile.subscription_plan === 'weekly') {
+        newEndDate.setDate(newEndDate.getDate() + 7);
+      } else if (profile.subscription_plan === 'monthly') {
+        newEndDate.setMonth(newEndDate.getMonth() + 1);
+      } else if (profile.subscription_plan === 'yearly') {
+        // Yearly plans reset credits monthly but billing is yearly
+        // So we extend end date by 1 month, not 1 year
+        newEndDate.setMonth(newEndDate.getMonth() + 1);
+      }
+
       await supabase
         .from('profiles')
         .update({
           credits_current: resetMaxCredits,
           credits_max: resetMaxCredits,
-          last_credit_reset: new Date().toISOString()
+          last_credit_reset: new Date().toISOString(),
+          subscription_end_date: newEndDate.toISOString()
         })
         .eq('id', user.id)
 

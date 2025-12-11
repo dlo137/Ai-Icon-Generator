@@ -200,9 +200,6 @@ export async function signInWithApple() {
     const { data, error } = await supabase.auth.signInWithIdToken({
       provider: 'apple',
       token: identityToken,
-      options: {
-        captchaToken: authorizationCode || undefined,
-      }
     });
 
     if (error) throw error;

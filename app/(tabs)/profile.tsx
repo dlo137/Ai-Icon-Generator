@@ -67,7 +67,6 @@ export default function ProfileScreen() {
 
   const settings = [
     { id: 'about', title: 'About', subtitle: 'App information' },
-    { id: 'help', title: 'Help & Support', subtitle: 'Get assistance' },
     { id: 'upgrade', title: 'Plans', subtitle: 'Choose a subscription plan' },
     { id: 'billing', title: 'Billing & Subscription', subtitle: 'Manage your current subscription' },
     // Only show rate button on iOS
@@ -1059,7 +1058,7 @@ export default function ProfileScreen() {
               <View style={styles.logoGlow}>
                 <View style={styles.logo}>
                   <Image
-                    source={require('../../assets/Thumbnail-Icon2.png')}
+                    source={require('../../assets/icon.png')}
                     style={styles.logoImage}
                     resizeMode="contain"
                   />
@@ -1069,9 +1068,9 @@ export default function ProfileScreen() {
 
             {/* Header */}
             <View style={styles.header}>
-              <Text style={styles.billingTitle}>Turn Thumbnails Into Paychecks.</Text>
+              <Text style={styles.billingTitle}>Turn Icons Into Paychecks.</Text>
               <Text style={styles.billingSubtitle}>
-                Every click counts. Create and save eye-catching thumbnails that grow your channel, build your audience, and boost your revenue.
+                Every click counts. Create and save eye-catching icons that grow your channel, build your audience, and boost your revenue.
               </Text>
             </View>
 
@@ -1581,6 +1580,7 @@ const styles = StyleSheet.create({
   logoImage: {
     width: 100,
     height: 100,
+    borderRadius: 20,
   },
   logoText: {
     fontSize: 50,

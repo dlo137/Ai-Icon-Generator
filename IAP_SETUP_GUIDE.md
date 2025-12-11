@@ -13,17 +13,17 @@ This happens when the IAP purchase flow doesn't complete properly. Here's how to
 3. Create three auto-renewable subscription products:
 
    **Weekly Plan:**
-   - Product ID: `thumbnail.weekly`
+   - Product ID: `icon.weekly`
    - Price: $2.99/week
-   - Subscription Group: Create a new group (e.g., "Thumbnail Pro")
+   - Subscription Group: Create a new group (e.g., "Icon Pro")
 
    **Monthly Plan:**
-   - Product ID: `thumbnail.monthly`
+   - Product ID: `icon.monthly`
    - Price: $5.99/month
    - Subscription Group: Same as above
 
    **Yearly Plan:**
-   - Product ID: `thumbnail.yearly`
+   - Product ID: `icon.yearly`
    - Price: $59.99/year
    - Subscription Group: Same as above
 
@@ -47,11 +47,11 @@ Make sure you have:
 
 ```typescript
 ios: {
-  bundleIdentifier: "com.watsonsweb.thumbnail-generator",
+  bundleIdentifier: "com.watson.AI-Icon-Generator",
   usesAppleSignIn: true,
   infoPlist: {
     ITSAppUsesNonExemptEncryption: false,
-    NSPhotoLibraryUsageDescription: "This app needs access to your photo library to save generated thumbnails.",
+    NSPhotoLibraryUsageDescription: "This app needs access to your photo library to save generated icons.",
   }
 }
 ```
@@ -61,10 +61,14 @@ ios: {
 In `subscriptionScreen.tsx`, verify:
 
 ```typescript
-const PRODUCT_IDS = {
-  yearly: 'thumbnail.yearly',
-  monthly: 'thumbnail.monthly',
-  weekly: 'thumbnail.weekly',
+const PRODUCT_IDS = Platform.OS === 'ios' ? {
+  yearly: 'icon.yearly',
+  monthly: 'icon.monthly',
+  weekly: 'icon.weekly',
+} : {
+  yearly: 'ai.icon.pro:yearly',
+  monthly: 'ai.icon.pro:monthly',
+  weekly: 'ai.icon.pro:weekly',
 };
 ```
 

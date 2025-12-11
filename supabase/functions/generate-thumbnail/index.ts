@@ -561,19 +561,9 @@ serve(async (req: Request) => {
     const effectiveBaseImage = effectiveBaseImageUrl || blankFrameUrl;
     const isUsingBlankFrame = !effectiveBaseImageUrl && !!blankFrameUrl;
 
-    // Generate single image with retry logic
-    const randomSeed = Math.floor(Math.random() * 1000000);
-    const generateWithRetry = () =>
-      retryWithBackoff(() =>
-        callGeminiImagePreview(finalPrompt, subjectImageUrl, referenceImageUrls, effectiveBaseImage, isUsingBlankFrame, randomSeed)
-      );
-
-    console.log('🎨 Image generated successfully, preparing to upload...');
-    const rawImageBytes = await generateWithRetry();
-    console.log('📏 Raw image size:', rawImageBytes.length, 'bytes');
-
-    // Resize image to exactly 1024x1024
-    const imageBytes = await resizeImageTo1024x1024(rawImageBytes);
+    // Generate 3 images with different seeds for variety
+    console.log('🎨 Generating 3 variations...');
+    const variations = [];
 
     // Get user ID from auth for namespacing
     console.log('👤 Getting user ID...');
@@ -581,37 +571,62 @@ serve(async (req: Request) => {
     const userId = user?.id || 'anonymous';
     console.log('👤 User ID:', userId);
 
-    // Store single image to Supabase Storage with user-specific path
-    const filename = `${userId}/${crypto.randomUUID()}.png`;
-    console.log('💾 Uploading to storage:', filename);
+    for (let i = 0; i < 3; i++) {
+      console.log(`\n🎨 Generating variation ${i + 1}/3...`);
+      const randomSeed = Math.floor(Math.random() * 1000000);
+      const generateWithRetry = () =>
+        retryWithBackoff(() =>
+          callGeminiImagePreview(finalPrompt, subjectImageUrl, referenceImageUrls, effectiveBaseImage, isUsingBlankFrame, randomSeed)
+        );
 
-    const upload = await supabase.storage.from("thumbnails").upload(filename, imageBytes, { contentType: "image/png", upsert: true });
+      const rawImageBytes = await generateWithRetry();
+      console.log(`📏 Variation ${i + 1} raw size:`, rawImageBytes.length, 'bytes');
 
-    if (upload.error) {
-      console.error('❌ Storage upload error:', upload.error);
-      throw upload.error;
+      // Resize image to exactly 1024x1024
+      const imageBytes = await resizeImageTo1024x1024(rawImageBytes);
+
+      // Store image to Supabase Storage with user-specific path
+      const filename = `${userId}/${crypto.randomUUID()}.png`;
+      console.log(`💾 Uploading variation ${i + 1} to storage:`, filename);
+
+      const upload = await supabase.storage.from("thumbnails").upload(filename, imageBytes, { contentType: "image/png", upsert: true });
+
+      if (upload.error) {
+        console.error(`❌ Storage upload error for variation ${i + 1}:`, upload.error);
+        throw upload.error;
+      }
+      console.log(`✅ Variation ${i + 1} upload successful!`);
+
+      // Generate long-lived signed URL (7 days)
+      const SEVEN_DAYS = 7 * 24 * 60 * 60; // 7 days in seconds
+      console.log(`🔗 Creating signed URL for variation ${i + 1}...`);
+      const signed = await supabase.storage.from("thumbnails").createSignedUrl(filename, SEVEN_DAYS);
+
+      if (signed.error) {
+        console.error(`❌ Signed URL error for variation ${i + 1}:`, signed.error);
+        throw signed.error;
+      }
+      console.log(`✅ Variation ${i + 1} signed URL created`);
+
+      variations.push({
+        imageUrl: signed.data?.signedUrl,
+        url: signed.data?.signedUrl,
+        width: WIDTH,
+        height: HEIGHT,
+        file: filename
+      });
     }
-    console.log('✅ Upload successful!');
 
-    // Generate long-lived signed URL (7 days)
-    // The app will download this to permanent local storage immediately
-    const SEVEN_DAYS = 7 * 24 * 60 * 60; // 7 days in seconds
-    console.log('🔗 Creating signed URL...');
-    const signed = await supabase.storage.from("thumbnails").createSignedUrl(filename, SEVEN_DAYS);
-
-    if (signed.error) {
-      console.error('❌ Signed URL error:', signed.error);
-      throw signed.error;
-    }
-    console.log('✅ Signed URL created:', signed.data?.signedUrl?.substring(0, 50) + '...');
-
-    console.log('📤 Sending response to client...');
+    console.log('📤 Sending response with 3 variations to client...');
     return new Response(JSON.stringify({
-      imageUrl: signed.data?.signedUrl,
-      url: signed.data?.signedUrl,
+      variation1: variations[0],
+      variation2: variations[1],
+      variation3: variations[2],
+      imageUrl: variations[0].imageUrl, // Backwards compatibility
+      url: variations[0].imageUrl, // Backwards compatibility
       width: WIDTH,
       height: HEIGHT,
-      file: filename,
+      file: variations[0].file,
       prompt: finalPrompt
     }), { headers: { "Content-Type": "application/json" } });
 

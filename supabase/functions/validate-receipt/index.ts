@@ -60,7 +60,7 @@ serve(async (req) => {
       credits_max = 75
     } else if (productId.includes('weekly')) {
       plan = 'weekly'
-      credits_max = 30
+      credits_max = 10
     }
 
     // Update user profile with subscription info
@@ -70,8 +70,6 @@ serve(async (req) => {
         subscription_plan: plan,
         subscription_id: transactionId,
         is_pro_version: true,
-        product_id: productId,
-        purchase_time: new Date().toISOString(),
         credits_current: credits_max,
         credits_max: credits_max,
         last_credit_reset: new Date().toISOString(),

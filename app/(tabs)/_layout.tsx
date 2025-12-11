@@ -118,7 +118,7 @@ function TabsContent() {
       <Tabs.Screen
         name="history"
         options={{
-          title: 'Thumbnails',
+          title: 'Icons',
           tabBarIcon: ({ color }) => (
             <View style={{ flexDirection: 'row', gap: 2 }}>
               <View style={{
