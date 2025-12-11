@@ -291,7 +291,7 @@ export default function WelcomeScreen() {
               </View>
             )}
             <Animated.Image
-              source={step === 1 ? require('../assets/home.png') : step === 2 ? require('../assets/editscreen.png') : require('../assets/home.png')}
+              source={step === 1 ? require('../assets/onboarding3.png') : step === 2 ? require('../assets/onboarding1.png') : require('../assets/onboarding3.png')}
               style={[
                 styles.heroImage,
                 {
@@ -392,9 +392,10 @@ const styles = StyleSheet.create({
   },
   heroImage: {
     width: '100%',
-    height: 600,
+    height: 500,
     marginTop: -30,
     marginBottom: -30,
+    paddingBottom: 40,
     zIndex: 10,
   },
   iconImage: {

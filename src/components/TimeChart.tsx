@@ -41,29 +41,29 @@ const TimeChart = () => {
 
   // Data points for manual method - slower upward trend
   const manualDataPoints = [
-    { x: 0.00, y: 0.05 },
-    { x: 0.05, y: 0.08 },
-    { x: 0.10, y: 0.11 },
-    { x: 0.15, y: 0.14 },
-    { x: 0.20, y: 0.17 },
-    { x: 0.25, y: 0.20 },
-    { x: 0.30, y: 0.23 },
-    { x: 0.35, y: 0.26 },
-    { x: 0.40, y: 0.29 },
-    { x: 0.43, y: 0.31 },
-    { x: 0.47, y: 0.33 },
-    { x: 0.50, y: 0.35 },
-    { x: 0.53, y: 0.37 },
-    { x: 0.57, y: 0.39 },
-    { x: 0.60, y: 0.41 },
-    { x: 0.65, y: 0.43 },
-    { x: 0.70, y: 0.45 },
-    { x: 0.75, y: 0.47 },
-    { x: 0.80, y: 0.49 },
-    { x: 0.85, y: 0.51 },
-    { x: 0.90, y: 0.53 },
-    { x: 0.95, y: 0.55 },
-    { x: 1.00, y: 0.57 },
+    { x: 0.00, y: 0.03 },
+    { x: 0.05, y: 0.05 },
+    { x: 0.10, y: 0.07 },
+    { x: 0.15, y: 0.09 },
+    { x: 0.20, y: 0.11 },
+    { x: 0.25, y: 0.13 },
+    { x: 0.30, y: 0.15 },
+    { x: 0.35, y: 0.17 },
+    { x: 0.40, y: 0.19 },
+    { x: 0.43, y: 0.21 },
+    { x: 0.47, y: 0.23 },
+    { x: 0.50, y: 0.25 },
+    { x: 0.53, y: 0.27 },
+    { x: 0.57, y: 0.29 },
+    { x: 0.60, y: 0.31 },
+    { x: 0.65, y: 0.33 },
+    { x: 0.70, y: 0.35 },
+    { x: 0.75, y: 0.37 },
+    { x: 0.80, y: 0.39 },
+    { x: 0.85, y: 0.41 },
+    { x: 0.90, y: 0.43 },
+    { x: 0.95, y: 0.45 },
+    { x: 1.00, y: 0.47 },
   ];
 
   // Convert data points to SVG coordinates
@@ -203,7 +203,7 @@ const TimeChart = () => {
           <View style={styles.legendRow}>
             <View style={styles.legendItem}>
               <View style={[styles.legendDot, { backgroundColor: '#3b82f6' }]} />
-              <Text style={styles.legendItemText}>With AI Thubmnail</Text>
+              <Text style={styles.legendItemText}>With AI Icon</Text>
             </View>
             <View style={styles.legendItem}>
               <View style={[styles.legendDot, { backgroundColor: '#ef4444' }]} />

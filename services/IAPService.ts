@@ -27,12 +27,11 @@ const INFLIGHT_KEY = 'iapPurchaseInFlight';
 
 // Development mode detection
 const isDevelopment = () => {
-  // Check if running in Expo Go
+  // Only treat as development if running in Expo Go
+  // DO NOT use __DEV__ flag as it can be true in TestFlight builds
   const isExpoGo = Constants.appOwnership === 'expo';
-  // Check if in __DEV__ mode
-  const isDevMode = __DEV__;
 
-  return isExpoGo || isDevMode;
+  return isExpoGo;
 };
 
 class IAPService {
@@ -69,12 +68,16 @@ class IAPService {
         return true;
       }
 
-      console.log('[IAP-SERVICE] Initializing react-native-iap...');
+      console.log('[IAP-SERVICE] 🚀 Initializing react-native-iap for PRODUCTION...');
+      console.log('[IAP-SERVICE] Platform:', Platform.OS);
 
       if (!this.isConnected) {
+        console.log('[IAP-SERVICE] Attempting to connect to store...');
         const result = await RNIap.initConnection();
-        console.log('[IAP-SERVICE] Connection result:', result);
+        console.log('[IAP-SERVICE] ✅ Connection result:', result);
         this.isConnected = true;
+      } else {
+        console.log('[IAP-SERVICE] Already connected to store');
       }
 
       // Set up purchase listeners
@@ -82,19 +85,29 @@ class IAPService {
         console.log('[IAP-SERVICE] Setting up purchase listeners...');
         this.setupPurchaseListeners();
         this.hasListener = true;
+        console.log('[IAP-SERVICE] ✅ Purchase listeners active');
+      } else {
+        console.log('[IAP-SERVICE] Purchase listeners already active');
       }
 
       // Clear any pending transactions on iOS
       if (Platform.OS === 'ios') {
+        console.log('[IAP-SERVICE] Clearing pending iOS transactions...');
         await RNIap.clearTransactionIOS();
+        console.log('[IAP-SERVICE] ✅ iOS transactions cleared');
       }
 
       // Check for unfinished transactions (important for Android)
+      console.log('[IAP-SERVICE] Checking for pending purchases...');
       await this.checkForPendingPurchases();
 
+      console.log('[IAP-SERVICE] ✅ Initialization complete!');
       return true;
     } catch (error) {
-      console.error('[IAP-SERVICE] Failed to initialize:', error);
+      console.error('[IAP-SERVICE] ❌ Failed to initialize:', error);
+      console.error('[IAP-SERVICE] Error details:', JSON.stringify(error, null, 2));
+      this.isConnected = false;
+      this.hasListener = false;
       return false;
     }
   }

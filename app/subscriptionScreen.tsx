@@ -94,13 +94,8 @@ export default function SubscriptionScreen() {
 
     initializeIAP();
 
-    // Fallback: Set IAP ready after 5 seconds if still not ready
-    const timeout = setTimeout(() => {
-      setIapReady(true);
-      console.log('[SUBSCRIPTION] IAP initialization timeout - unblocking button');
-    }, 5000);
-
-    return () => clearTimeout(timeout);
+    // No fallback timeout - let initialization complete properly
+    // This ensures we don't show "ready" when IAP is not actually connected
   }, []);
 
   // Re-register callback whenever it changes
@@ -114,8 +109,8 @@ export default function SubscriptionScreen() {
   const initializeIAP = async () => {
     if (!isIAPAvailable) {
       console.log('[SUBSCRIPTION] IAP not available on this platform');
-      // Set IAP ready to true even if unavailable so button is not stuck
-      setIapReady(true);
+      setIapReady(false);
+      Alert.alert('Not Available', 'In-app purchases are not available on this device.');
       return;
     }
 
@@ -136,13 +131,14 @@ export default function SubscriptionScreen() {
         // Fetch products
         await fetchProducts();
       } else {
-        // If initialization failed, still set ready to true to unblock the button
-        setIapReady(true);
+        // If initialization failed, keep iapReady as false and show error
+        console.error('[SUBSCRIPTION] IAP initialization failed - keeping button disabled');
+        Alert.alert('Connection Failed', 'Could not connect to App Store. Please check your internet connection and restart the app.');
       }
     } catch (error) {
       console.error('[SUBSCRIPTION] Error initializing IAP:', error);
-      // Set ready to true even on error to prevent button from being stuck
-      setIapReady(true);
+      // Keep iapReady as false on error
+      setIapReady(false);
       Alert.alert('Error', 'Failed to initialize purchases. Please restart the app.');
     }
   };
@@ -410,6 +406,16 @@ export default function SubscriptionScreen() {
             </Text>
           </LinearGradient>
         </TouchableOpacity>
+
+        {/* Retry Connection Button - Show when not ready */}
+        {!iapReady && !loadingProducts && (
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={initializeIAP}
+          >
+            <Text style={styles.retryButtonText}>🔄 Retry Connection</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Debug Panel */}
@@ -723,6 +729,21 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#ffffff',
     letterSpacing: 0.5,
+  },
+  retryButton: {
+    marginTop: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    backgroundColor: 'rgba(30, 64, 175, 0.2)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#1e40af',
+    alignItems: 'center',
+  },
+  retryButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#93c5fd',
   },
   // Debug Panel Styles
   debugPanel: {
