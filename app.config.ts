@@ -4,7 +4,7 @@ export default {
   expo: {
     name: "Ai Icon Generator",
     slug: "ai-icon-generator",
-    version: "1.0.22",
+    version: "1.0.23",
     orientation: "portrait",
     icon: "./assets/icon.png",
     userInterfaceStyle: "light",
@@ -33,7 +33,7 @@ export default {
     ios: {
       supportsTablet: true,
       bundleIdentifier: "com.watson.AI-Icon-Generator",
-      buildNumber: "15",
+      buildNumber: "23",
       icon: "./assets/icon.png",
       infoPlist: {
         ITSAppUsesNonExemptEncryption: false,
