@@ -16,7 +16,7 @@ export default function LoadingAccountScreen() {
       useNativeDriver: false,
     }).start();
 
-    // Update percent number
+    // Update percent numberJ
     const interval = setInterval(() => {
       setPercent((prev) => {
         if (prev >= 100) {

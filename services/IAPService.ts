@@ -4,9 +4,8 @@ import { supabase } from '../lib/supabase';
 import * as RNIap from 'react-native-iap';
 import type {
   Product,
-  ProductPurchase,
+  Purchase,
   PurchaseError,
-  Subscription,
 } from 'react-native-iap';
 
 // Platform-specific product IDs
@@ -103,7 +102,7 @@ class IAPService {
   private setupPurchaseListeners() {
     // Purchase update listener
     this.purchaseUpdateSubscription = RNIap.purchaseUpdatedListener(
-      async (purchase: ProductPurchase) => {
+      async (purchase: Purchase) => {
         console.log('[IAP-SERVICE] 🎉 Purchase updated:', purchase);
         this.lastPurchaseResult = purchase;
 
@@ -146,7 +145,7 @@ class IAPService {
     console.log('[IAP-SERVICE] Purchase listeners set up successfully');
   }
 
-  private async handlePurchaseUpdate(purchase: ProductPurchase) {
+  private async handlePurchaseUpdate(purchase: Purchase) {
     try {
       console.log('[IAP-SERVICE] Processing purchase update:', {
         productId: purchase.productId,
@@ -185,7 +184,7 @@ class IAPService {
 
         for (const purchase of purchases) {
           const txId = purchase.transactionId;
-          if (!this.processedIds.has(txId)) {
+          if (txId && !this.processedIds.has(txId)) {
             console.log('[IAP-SERVICE] Processing pending purchase:', purchase.productId);
             await this.processPurchase(purchase, 'orphan');
           }
@@ -199,7 +198,7 @@ class IAPService {
   }
 
   private async processPurchase(
-    purchase: ProductPurchase,
+    purchase: Purchase,
     source: 'listener' | 'restore' | 'orphan'
   ) {
     const txId = purchase.transactionId;
@@ -306,7 +305,11 @@ class IAPService {
       console.log('[IAP-SERVICE] Finishing transaction...');
       if (Platform.OS === 'android') {
         // On Android, acknowledge the purchase
-        await RNIap.acknowledgePurchaseAndroid(purchase.purchaseToken);
+        if (purchase.purchaseToken) {
+          await RNIap.acknowledgePurchaseAndroid(purchase.purchaseToken);
+        } else {
+          console.error('[IAP-SERVICE] ❌ No purchaseToken available for Android purchase');
+        }
       } else {
         // On iOS, finish the transaction
         await RNIap.finishTransaction({ purchase, isConsumable: false });
@@ -339,7 +342,7 @@ class IAPService {
     }
   }
 
-  async getProducts(): Promise<Product[]> {
+  async getProducts(): Promise<any[]> {
     console.log('[IAP-SERVICE] 🔍 getProducts() called');
 
     if (!this.isConnected) {
@@ -356,27 +359,55 @@ class IAPService {
         hasListener: this.hasListener
       });
 
-      // Get subscriptions (most IAP products are subscriptions)
-      console.log('[IAP-SERVICE] 📞 Calling RNIap.getSubscriptions()...');
-      const products = await RNIap.getSubscriptions({ skus: productIds });
+      let products: any[] = [];
+
+      // Try fetchProducts with type 'subs' first (for auto-renewable subscriptions)
+      try {
+        console.log('[IAP-SERVICE] 📞 Attempting fetchProducts() with type: subs...');
+        const result = await RNIap.fetchProducts({ skus: productIds, type: 'subs' });
+        products = result || [];
+        console.log('[IAP-SERVICE] ✅ fetchProducts(subs) returned:', products.length, 'products');
+      } catch (subError: any) {
+        console.warn('[IAP-SERVICE] ⚠️ fetchProducts(subs) failed:', subError.message);
+        console.log('[IAP-SERVICE] 📞 Trying fetchProducts() with type: in-app as fallback...');
+
+        // Fallback to fetchProducts with in-app type (for non-consumables or if subscriptions fail)
+        try {
+          const result = await RNIap.fetchProducts({ skus: productIds, type: 'in-app' });
+          products = result || [];
+          console.log('[IAP-SERVICE] ✅ fetchProducts(in-app) returned:', products.length, 'products');
+        } catch (prodError: any) {
+          console.error('[IAP-SERVICE] ❌ fetchProducts(in-app) also failed:', prodError.message);
+
+          // Last resort: try without type parameter
+          console.log('[IAP-SERVICE] 📞 Final attempt: fetchProducts() without type...');
+          const result = await RNIap.fetchProducts({ skus: productIds });
+          products = result || [];
+          console.log('[IAP-SERVICE] ✅ fetchProducts() returned:', products.length, 'products');
+        }
+      }
 
       console.log('[IAP-SERVICE] ✅ Raw products response:', JSON.stringify(products, null, 2));
-      console.log('[IAP-SERVICE] ✅ Products count:', products.length);
+      console.log('[IAP-SERVICE] ✅ Final products count:', products.length);
 
       if (products.length === 0) {
         console.warn('[IAP-SERVICE] ⚠️ WARNING: Zero products returned from App Store!');
         console.warn('[IAP-SERVICE] ⚠️ Possible reasons:');
         console.warn('[IAP-SERVICE] ⚠️ 1. Products not created in App Store Connect');
-        console.warn('[IAP-SERVICE] ⚠️ 2. Product IDs mismatch');
+        console.warn('[IAP-SERVICE] ⚠️ 2. Product IDs mismatch - Expected:', productIds);
         console.warn('[IAP-SERVICE] ⚠️ 3. Bundle ID mismatch');
         console.warn('[IAP-SERVICE] ⚠️ 4. Paid Apps Agreement not signed');
+        console.warn('[IAP-SERVICE] ⚠️ 5. Products not approved/available in App Store Connect');
+        console.warn('[IAP-SERVICE] ⚠️ 6. Using wrong Apple ID for testing (not Sandbox tester)');
       } else {
         products.forEach((product, index) => {
           console.log(`[IAP-SERVICE] Product ${index + 1}:`, {
-            productId: product.productId,
+            productId: (product as any).productId || product.id,
             title: product.title,
             price: product.price,
-            currency: product.currency
+            localizedPrice: (product as any).localizedPrice,
+            currency: product.currency,
+            type: (product as any).type
           });
         });
       }
@@ -392,10 +423,15 @@ class IAPService {
       // Provide specific guidance based on error
       if (err?.message?.includes('E_IAP_NOT_AVAILABLE')) {
         console.error('[IAP-SERVICE] ❌ IAP not available on this device/simulator');
+        console.error('[IAP-SERVICE] ❌ Note: IAP does not work in iOS Simulator - use real device');
       } else if (err?.message?.includes('E_NETWORK_ERROR')) {
         console.error('[IAP-SERVICE] ❌ Network error - check internet connection');
       } else if (err?.message?.includes('E_UNKNOWN')) {
         console.error('[IAP-SERVICE] ❌ Unknown error - possible App Store Connect issue');
+      } else if (err?.message?.includes('E_SERVICE_ERROR')) {
+        console.error('[IAP-SERVICE] ❌ Service error - App Store might be temporarily unavailable');
+      } else if (err?.message?.includes('E_RECEIPT_FAILED')) {
+        console.error('[IAP-SERVICE] ❌ Receipt validation failed');
       }
 
       return [];
@@ -432,12 +468,26 @@ class IAPService {
 
     try {
       console.log('[IAP-SERVICE] Requesting purchase...');
+      console.log('[IAP-SERVICE] Using requestPurchase() with productId:', productId);
 
-      if (Platform.OS === 'android') {
-        await RNIap.requestSubscription({ sku: productId });
+      // In v14, requestPurchase handles both subscriptions and products
+      // Use platform-specific request format
+      if (Platform.OS === 'ios') {
+        await RNIap.requestPurchase({
+          type: 'subs',
+          request: {
+            apple: { sku: productId }
+          }
+        });
       } else {
-        await RNIap.requestSubscription({ sku: productId });
+        await RNIap.requestPurchase({
+          type: 'subs',
+          request: {
+            google: { skus: [productId] }
+          }
+        });
       }
+      console.log('[IAP-SERVICE] requestPurchase() initiated');
 
       if (this.debugCallback) {
         this.debugCallback({
@@ -478,7 +528,7 @@ class IAPService {
     }
   }
 
-  async restorePurchases(): Promise<ProductPurchase[]> {
+  async restorePurchases(): Promise<Purchase[]> {
     if (!this.isConnected) {
       await this.initialize();
     }
