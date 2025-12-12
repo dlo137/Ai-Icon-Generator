@@ -232,7 +232,10 @@ export default function SubscriptionScreen() {
 
     const list = products.length ? products : await fetchProducts(true);
     const planId = PRODUCT_IDS[selectedPlan];
-    const product = list.find(p => p.productId === planId);
+    const product = list.find(p => {
+      const prodId = (p as any).productId || (p as any).id;
+      return prodId === planId;
+    });
 
     if (!product) {
       Alert.alert(
@@ -244,7 +247,8 @@ export default function SubscriptionScreen() {
 
     // Set the current purchase attempt BEFORE starting the purchase
     setCurrentPurchaseAttempt(selectedPlan);
-    await handlePurchase(product.productId);
+    const productId = (product as any).productId || (product as any).id;
+    await handlePurchase(productId);
   };
 
   const handlePurchase = async (productId: string) => {
@@ -522,11 +526,14 @@ export default function SubscriptionScreen() {
               {products.length > 0 && (
                 <View style={{ marginTop: 8 }}>
                   <Text style={styles.debugTextSmall}>Available Products:</Text>
-                  {products.map(p => (
-                    <Text key={p.productId} style={styles.debugText}>
-                      • {p.productId}
-                    </Text>
-                  ))}
+                  {products.map((p, idx) => {
+                    const prodId = (p as any).productId || (p as any).id;
+                    return (
+                      <Text key={prodId || idx} style={styles.debugText}>
+                        • {prodId} - {p.title || 'No title'} - {p.price || 'No price'}
+                      </Text>
+                    );
+                  })}
                 </View>
               )}
             </View>
