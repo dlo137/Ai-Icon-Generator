@@ -37,6 +37,7 @@ export default function SubscriptionScreen() {
     listenerStatus: 'Not started',
     connectionStatus: { isConnected: false, hasListener: false },
     lastPurchaseResult: null,
+    lastError: null,
     timestamp: new Date().toISOString()
   });
   const [showDebug, setShowDebug] = useState(true); // Set to false to hide debug panel
@@ -94,8 +95,13 @@ export default function SubscriptionScreen() {
 
     initializeIAP();
 
-    // No fallback timeout - let initialization complete properly
-    // This ensures we don't show "ready" when IAP is not actually connected
+    // Fallback: Set IAP ready after 5 seconds if still not ready
+    const timeout = setTimeout(() => {
+      setIapReady(true);
+      console.log('[SUBSCRIPTION] IAP initialization timeout - unblocking button');
+    }, 5000);
+
+    return () => clearTimeout(timeout);
   }, []);
 
   // Re-register callback whenever it changes
@@ -109,8 +115,8 @@ export default function SubscriptionScreen() {
   const initializeIAP = async () => {
     if (!isIAPAvailable) {
       console.log('[SUBSCRIPTION] IAP not available on this platform');
-      setIapReady(false);
-      Alert.alert('Not Available', 'In-app purchases are not available on this device.');
+      // Set IAP ready to true even if unavailable so button is not stuck
+      setIapReady(true);
       return;
     }
 
@@ -131,14 +137,13 @@ export default function SubscriptionScreen() {
         // Fetch products
         await fetchProducts();
       } else {
-        // If initialization failed, keep iapReady as false and show error
-        console.error('[SUBSCRIPTION] IAP initialization failed - keeping button disabled');
-        Alert.alert('Connection Failed', 'Could not connect to App Store. Please check your internet connection and restart the app.');
+        // If initialization failed, still set ready to true to unblock the button
+        setIapReady(true);
       }
     } catch (error) {
       console.error('[SUBSCRIPTION] Error initializing IAP:', error);
-      // Keep iapReady as false on error
-      setIapReady(false);
+      // Set ready to true even on error to prevent button from being stuck
+      setIapReady(true);
       Alert.alert('Error', 'Failed to initialize purchases. Please restart the app.');
     }
   };
@@ -151,27 +156,67 @@ export default function SubscriptionScreen() {
       return [];
     }
 
-    console.log('[SUBSCRIPTION] Fetching products...');
+    console.log('[SUBSCRIPTION] 🔍 Fetching products...');
     try {
       setLoadingProducts(true);
       const results = await IAPService.getProducts();
+      console.log('[SUBSCRIPTION] 📦 Products received:', results?.length || 0);
+
       if (results?.length) {
         setProducts(results);
-        console.log('[SUBSCRIPTION] Products loaded:', results.map(p => `${p.productId}: ${p.price}`).join(', '));
+        console.log('[SUBSCRIPTION] ✅ Products loaded successfully:');
+        results.forEach(p => {
+          console.log(`[SUBSCRIPTION]   - ${(p as any).productId}: ${p.price} (${p.title})`);
+        });
         return results;
       } else {
         setProducts([]);
-        console.log('[SUBSCRIPTION] No products available');
+        console.warn('[SUBSCRIPTION] ⚠️ No products returned from App Store');
+        console.warn('[SUBSCRIPTION] ⚠️ Check console logs above for detailed error info');
+
         if (showErrors) {
-          Alert.alert('Products Unavailable', 'Could not load subscription products. Please check your internet connection and try again.');
+          Alert.alert(
+            'No Products Found',
+            'Could not load any subscription products.\n\n' +
+            'Possible causes:\n' +
+            '• Products not created in App Store Connect\n' +
+            '• Bundle ID mismatch\n' +
+            '• Paid Apps Agreement not signed\n\n' +
+            'Check the console logs for detailed error information.',
+            [{ text: 'OK' }]
+          );
         }
         return [];
       }
-    } catch (err) {
+    } catch (err: any) {
       setProducts([]);
-      console.error('[SUBSCRIPTION] Error fetching products:', err);
+      console.error('[SUBSCRIPTION] ❌ Error fetching products:', err);
+      console.error('[SUBSCRIPTION] ❌ Error details:', {
+        message: err?.message,
+        code: err?.code,
+        type: typeof err
+      });
+
+      // Update debug info with error
+      setDebugInfo((prev: any) => ({
+        ...prev,
+        lastError: {
+          message: err?.message || String(err),
+          code: err?.code,
+          timestamp: new Date().toISOString()
+        }
+      }));
+
       if (showErrors) {
-        Alert.alert('Error', 'Failed to load products: ' + String(err instanceof Error ? err.message : err));
+        const errorMsg = err?.message || String(err);
+        Alert.alert(
+          'Failed to Load Products',
+          `Error: ${errorMsg}\n\nPlease check:\n` +
+          '• Internet connection\n' +
+          '• App Store Connect setup\n' +
+          '• Console logs for details',
+          [{ text: 'OK' }]
+        );
       }
       return [];
     } finally {
@@ -440,9 +485,6 @@ export default function SubscriptionScreen() {
             <View style={styles.debugSection}>
               <Text style={styles.debugSectionTitle}>Connection</Text>
               <Text style={styles.debugText}>
-                Mode: {debugInfo.connectionStatus?.isDevMode ? '🧪 DEVELOPMENT' : '🚀 PRODUCTION'}
-              </Text>
-              <Text style={styles.debugText}>
                 IAP Available: {isIAPAvailable ? '✅' : '❌'}
               </Text>
               <Text style={styles.debugText}>
@@ -488,6 +530,23 @@ export default function SubscriptionScreen() {
                 </View>
               )}
             </View>
+
+            {debugInfo.lastError && (
+              <View style={styles.debugSection}>
+                <Text style={styles.debugSectionTitle}>⚠️ Last Error</Text>
+                <Text style={[styles.debugText, { color: '#ef4444' }]}>
+                  Message: {debugInfo.lastError.message}
+                </Text>
+                {debugInfo.lastError.code && (
+                  <Text style={styles.debugText}>
+                    Code: {debugInfo.lastError.code}
+                  </Text>
+                )}
+                <Text style={styles.debugTextSmall}>
+                  Time: {new Date(debugInfo.lastError.timestamp).toLocaleTimeString()}
+                </Text>
+              </View>
+            )}
 
             {debugInfo.lastPurchaseResult && (
               <View style={styles.debugSection}>

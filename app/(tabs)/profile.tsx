@@ -222,7 +222,7 @@ export default function ProfileScreen() {
       const results = await IAPService.getProducts();
       if (results?.length) {
         setProducts(results);
-        console.log('[PROFILE] Products loaded:', results.map(p => `${p.productId}: ${p.price}`).join(', '));
+        console.log('[PROFILE] Products loaded:', results.map(p => `${(p as any).productId}: ${p.price}`).join(', '));
         return results;
       } else {
         setProducts([]);
@@ -247,7 +247,7 @@ export default function ProfileScreen() {
   const loadUserData = async () => {
     try {
       // Check if we're in guest mode first
-      if (global?.isGuestMode) {
+      if ((global as any)?.isGuestMode) {
         // Set guest data without any API calls
         setUser({
           email: 'Guest',
@@ -344,7 +344,8 @@ export default function ProfileScreen() {
           plan: planName,
           price: price,
           renewalDate: subInfo.expiryDate || subInfo.purchaseDate,
-          status: 'active'
+          status: 'active',
+          isCancelled: false
         });
       } else {
         setCurrentPlan('Free');
@@ -352,7 +353,8 @@ export default function ProfileScreen() {
           plan: 'Free Plan',
           price: '$0.00',
           renewalDate: null,
-          status: 'free'
+          status: 'free',
+          isCancelled: false
         });
       }
     } catch (error) {
@@ -366,7 +368,7 @@ export default function ProfileScreen() {
     try {
       if (user?.isGuest) {
         // Clear guest mode
-        global.isGuestMode = false;
+        (global as any).isGuestMode = false;
       } else {
         await signOut();
       }
@@ -948,7 +950,7 @@ export default function ProfileScreen() {
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <View style={styles.modalOverlay}>
-            <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
+            <TouchableWithoutFeedback onPress={(e: any) => e.stopPropagation()}>
               <View style={styles.contactModal}>
                 <ScrollView showsVerticalScrollIndicator={false}>
                   <Text style={styles.contactTitle}>Help & Support</Text>
@@ -964,7 +966,7 @@ export default function ProfileScreen() {
                         placeholder="Your full name"
                         placeholderTextColor="#8a9099"
                         value={contactForm.name}
-                        onChangeText={(text) => setContactForm({...contactForm, name: text})}
+                        onChangeText={(text: string) => setContactForm({...contactForm, name: text})}
                       />
                     </View>
 
@@ -975,7 +977,7 @@ export default function ProfileScreen() {
                         placeholder="your.email@example.com"
                         placeholderTextColor="#8a9099"
                         value={contactForm.email}
-                        onChangeText={(text) => setContactForm({...contactForm, email: text})}
+                        onChangeText={(text: string) => setContactForm({...contactForm, email: text})}
                         keyboardType="email-address"
                         autoCapitalize="none"
                       />
@@ -988,7 +990,7 @@ export default function ProfileScreen() {
                         placeholder="What's this about?"
                         placeholderTextColor="#8a9099"
                         value={contactForm.subject}
-                        onChangeText={(text) => setContactForm({...contactForm, subject: text})}
+                        onChangeText={(text: string) => setContactForm({...contactForm, subject: text})}
                       />
                     </View>
 
@@ -999,7 +1001,7 @@ export default function ProfileScreen() {
                         placeholder="Tell us how we can help you..."
                         placeholderTextColor="#8a9099"
                         value={contactForm.message}
-                        onChangeText={(text) => setContactForm({...contactForm, message: text})}
+                        onChangeText={(text: string) => setContactForm({...contactForm, message: text})}
                         multiline={true}
                         numberOfLines={6}
                         textAlignVertical="top"

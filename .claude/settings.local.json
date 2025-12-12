@@ -55,7 +55,8 @@
       "Bash(npx expo-doctor:*)",
       "Bash(git rm:*)",
       "Bash(eas credentials:*)",
-      "Bash(eas submit:*)"
+      "Bash(eas submit:*)",
+      "Bash(ls:*)"
     ],
     "deny": [],
     "ask": []

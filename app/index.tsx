@@ -291,7 +291,7 @@ export default function WelcomeScreen() {
               </View>
             )}
             <Animated.Image
-              source={step === 1 ? require('../assets/onboarding3.png') : step === 2 ? require('../assets/onboarding1.png') : require('../assets/onboarding3.png')}
+              source={step === 1 ? require('../assets/onboarding3.png') : step === 2 ? require('../assets/onboarding2.png') : require('../assets/onboarding3.png')}
               style={[
                 styles.heroImage,
                 {

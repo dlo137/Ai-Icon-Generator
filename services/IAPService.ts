@@ -2,7 +2,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Alert, Platform } from 'react-native';
 import { supabase } from '../lib/supabase';
 import * as RNIap from 'react-native-iap';
-import Constants from 'expo-constants';
 import type {
   Product,
   ProductPurchase,
@@ -25,15 +24,6 @@ const ANDROID_PRODUCT_IDS = [
 
 const INFLIGHT_KEY = 'iapPurchaseInFlight';
 
-// Development mode detection
-const isDevelopment = () => {
-  // Only treat as development if running in Expo Go
-  // DO NOT use __DEV__ flag as it can be true in TestFlight builds
-  const isExpoGo = Constants.appOwnership === 'expo';
-
-  return isExpoGo;
-};
-
 class IAPService {
   private static instance: IAPService;
   private isConnected: boolean = false;
@@ -47,7 +37,6 @@ class IAPService {
   private purchasePromiseReject: ((reason?: any) => void) | null = null;
   private purchaseUpdateSubscription: any = null;
   private purchaseErrorSubscription: any = null;
-  private isDevMode: boolean = isDevelopment();
 
   private constructor() {}
 
@@ -60,52 +49,51 @@ class IAPService {
 
   async initialize(): Promise<boolean> {
     try {
-      // In development mode, skip real IAP initialization
-      if (this.isDevMode) {
-        console.log('[IAP-SERVICE] 🧪 Running in DEVELOPMENT MODE - Using mock IAP');
-        this.isConnected = true;
-        this.hasListener = true;
-        return true;
-      }
-
-      console.log('[IAP-SERVICE] 🚀 Initializing react-native-iap for PRODUCTION...');
-      console.log('[IAP-SERVICE] Platform:', Platform.OS);
+      console.log('[IAP-SERVICE] 🚀 Initializing react-native-iap...');
+      console.log('[IAP-SERVICE] 📱 Platform:', Platform.OS);
+      console.log('[IAP-SERVICE] 📦 RNIap version:', require('react-native-iap/package.json').version);
 
       if (!this.isConnected) {
-        console.log('[IAP-SERVICE] Attempting to connect to store...');
+        console.log('[IAP-SERVICE] 🔌 Attempting to connect to App Store...');
         const result = await RNIap.initConnection();
-        console.log('[IAP-SERVICE] ✅ Connection result:', result);
+        console.log('[IAP-SERVICE] ✅ Connection established:', result);
         this.isConnected = true;
       } else {
-        console.log('[IAP-SERVICE] Already connected to store');
+        console.log('[IAP-SERVICE] ✅ Already connected to App Store');
       }
 
       // Set up purchase listeners
       if (!this.hasListener) {
-        console.log('[IAP-SERVICE] Setting up purchase listeners...');
+        console.log('[IAP-SERVICE] 👂 Setting up purchase listeners...');
         this.setupPurchaseListeners();
         this.hasListener = true;
         console.log('[IAP-SERVICE] ✅ Purchase listeners active');
       } else {
-        console.log('[IAP-SERVICE] Purchase listeners already active');
+        console.log('[IAP-SERVICE] ✅ Purchase listeners already active');
       }
 
       // Clear any pending transactions on iOS
       if (Platform.OS === 'ios') {
-        console.log('[IAP-SERVICE] Clearing pending iOS transactions...');
+        console.log('[IAP-SERVICE] 🧹 Clearing pending iOS transactions...');
         await RNIap.clearTransactionIOS();
         console.log('[IAP-SERVICE] ✅ iOS transactions cleared');
       }
 
       // Check for unfinished transactions (important for Android)
-      console.log('[IAP-SERVICE] Checking for pending purchases...');
+      console.log('[IAP-SERVICE] 🔍 Checking for pending purchases...');
       await this.checkForPendingPurchases();
 
       console.log('[IAP-SERVICE] ✅ Initialization complete!');
+      console.log('[IAP-SERVICE] 📊 Final status:', {
+        isConnected: this.isConnected,
+        hasListener: this.hasListener
+      });
+
       return true;
-    } catch (error) {
-      console.error('[IAP-SERVICE] ❌ Failed to initialize:', error);
-      console.error('[IAP-SERVICE] Error details:', JSON.stringify(error, null, 2));
+    } catch (error: any) {
+      console.error('[IAP-SERVICE] ❌ CRITICAL: Failed to initialize');
+      console.error('[IAP-SERVICE] ❌ Error:', error?.message || 'Unknown error');
+      console.error('[IAP-SERVICE] ❌ Full error:', JSON.stringify(error, null, 2));
       this.isConnected = false;
       this.hasListener = false;
       return false;
@@ -351,136 +339,66 @@ class IAPService {
     }
   }
 
-  private getMockProducts(): Product[] {
-    console.log('[IAP-SERVICE] 🧪 Returning mock products for development');
-    const productIds = Platform.OS === 'ios' ? IOS_PRODUCT_IDS : ANDROID_PRODUCT_IDS;
-
-    return productIds.map((productId) => ({
-      productId,
-      title: productId.includes('yearly') ? 'Yearly Plan' :
-             productId.includes('monthly') ? 'Monthly Plan' : 'Weekly Plan',
-      description: 'Mock subscription for development',
-      price: productId.includes('yearly') ? '$59.99' :
-             productId.includes('monthly') ? '$5.99' : '$2.99',
-      currency: 'USD',
-      type: 'subs' as const,
-      localizedPrice: productId.includes('yearly') ? '$59.99' :
-                      productId.includes('monthly') ? '$5.99' : '$2.99',
-      subscriptionPeriodNumberIOS: '1',
-      subscriptionPeriodUnitIOS: productId.includes('yearly') ? 'YEAR' :
-                                 productId.includes('monthly') ? 'MONTH' : 'WEEK',
-    } as Product));
-  }
-
   async getProducts(): Promise<Product[]> {
-    if (!this.isConnected) {
-      await this.initialize();
-    }
+    console.log('[IAP-SERVICE] 🔍 getProducts() called');
 
-    // In development mode, return mock products
-    if (this.isDevMode) {
-      return this.getMockProducts();
+    if (!this.isConnected) {
+      console.log('[IAP-SERVICE] Not connected, initializing first...');
+      await this.initialize();
     }
 
     try {
       const productIds = Platform.OS === 'ios' ? IOS_PRODUCT_IDS : ANDROID_PRODUCT_IDS;
-      console.log('[IAP-SERVICE] Fetching products for', Platform.OS, ':', productIds);
+      console.log('[IAP-SERVICE] 📱 Platform:', Platform.OS);
+      console.log('[IAP-SERVICE] 🎯 Requesting product IDs:', productIds);
+      console.log('[IAP-SERVICE] 🔌 Connection status:', {
+        isConnected: this.isConnected,
+        hasListener: this.hasListener
+      });
 
       // Get subscriptions (most IAP products are subscriptions)
+      console.log('[IAP-SERVICE] 📞 Calling RNIap.getSubscriptions()...');
       const products = await RNIap.getSubscriptions({ skus: productIds });
-      console.log('[IAP-SERVICE] Products loaded:', products.length);
+
+      console.log('[IAP-SERVICE] ✅ Raw products response:', JSON.stringify(products, null, 2));
+      console.log('[IAP-SERVICE] ✅ Products count:', products.length);
+
+      if (products.length === 0) {
+        console.warn('[IAP-SERVICE] ⚠️ WARNING: Zero products returned from App Store!');
+        console.warn('[IAP-SERVICE] ⚠️ Possible reasons:');
+        console.warn('[IAP-SERVICE] ⚠️ 1. Products not created in App Store Connect');
+        console.warn('[IAP-SERVICE] ⚠️ 2. Product IDs mismatch');
+        console.warn('[IAP-SERVICE] ⚠️ 3. Bundle ID mismatch');
+        console.warn('[IAP-SERVICE] ⚠️ 4. Paid Apps Agreement not signed');
+      } else {
+        products.forEach((product, index) => {
+          console.log(`[IAP-SERVICE] Product ${index + 1}:`, {
+            productId: product.productId,
+            title: product.title,
+            price: product.price,
+            currency: product.currency
+          });
+        });
+      }
 
       return products;
-    } catch (err) {
-      console.error('[IAP-SERVICE] Error fetching products:', err);
+    } catch (err: any) {
+      console.error('[IAP-SERVICE] ❌ CRITICAL ERROR fetching products');
+      console.error('[IAP-SERVICE] ❌ Error type:', typeof err);
+      console.error('[IAP-SERVICE] ❌ Error message:', err?.message || 'Unknown');
+      console.error('[IAP-SERVICE] ❌ Error code:', err?.code || 'No code');
+      console.error('[IAP-SERVICE] ❌ Full error object:', JSON.stringify(err, null, 2));
+
+      // Provide specific guidance based on error
+      if (err?.message?.includes('E_IAP_NOT_AVAILABLE')) {
+        console.error('[IAP-SERVICE] ❌ IAP not available on this device/simulator');
+      } else if (err?.message?.includes('E_NETWORK_ERROR')) {
+        console.error('[IAP-SERVICE] ❌ Network error - check internet connection');
+      } else if (err?.message?.includes('E_UNKNOWN')) {
+        console.error('[IAP-SERVICE] ❌ Unknown error - possible App Store Connect issue');
+      }
+
       return [];
-    }
-  }
-
-  private async simulatePurchase(productId: string): Promise<void> {
-    console.log('[IAP-SERVICE] 🧪 Simulating purchase in development mode:', productId);
-
-    // Simulate a slight delay for realism
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    // Determine plan and credits based on productId
-    let planToUse: 'yearly' | 'monthly' | 'weekly' = 'yearly';
-    const productIdLower = productId.toLowerCase();
-
-    if (productIdLower.includes('monthly')) {
-      planToUse = 'monthly';
-    } else if (productIdLower.includes('weekly')) {
-      planToUse = 'weekly';
-    }
-
-    let credits_max = 0;
-    switch (planToUse) {
-      case 'yearly': credits_max = 90; break;
-      case 'monthly': credits_max = 75; break;
-      case 'weekly': credits_max = 10; break;
-    }
-
-    // Get current user
-    const { data: userData } = await supabase.auth.getUser();
-    const userId = userData?.user?.id;
-
-    if (!userId) {
-      console.error('[IAP-SERVICE] 🧪 No user found for mock purchase');
-      throw new Error('User not authenticated');
-    }
-
-    // Update Supabase profile
-    const now = new Date().toISOString();
-    const mockSubscriptionId = `dev_${productId}_${Date.now()}`;
-
-    // Calculate subscription end date based on plan
-    const endDate = new Date();
-    if (planToUse === 'weekly') {
-      endDate.setDate(endDate.getDate() + 7);
-    } else if (planToUse === 'monthly') {
-      endDate.setMonth(endDate.getMonth() + 1);
-    } else if (planToUse === 'yearly') {
-      endDate.setFullYear(endDate.getFullYear() + 1);
-    }
-
-    const updateData = {
-      subscription_plan: planToUse,
-      subscription_id: mockSubscriptionId,
-      is_pro_version: true,
-      credits_current: credits_max,
-      credits_max: credits_max,
-      subscription_start_date: now,
-      subscription_end_date: endDate.toISOString(),
-      last_credit_reset: now
-    };
-
-    console.log('[IAP-SERVICE] 🧪 Updating profile with mock data:', updateData);
-
-    const { error: supabaseError } = await supabase.from('profiles')
-      .update(updateData)
-      .eq('id', userId);
-
-    if (supabaseError) {
-      console.error('[IAP-SERVICE] 🧪 Supabase update error:', supabaseError);
-      throw supabaseError;
-    }
-
-    // Update AsyncStorage
-    await AsyncStorage.multiSet([
-      ['profile.subscription_plan', planToUse],
-      ['profile.subscription_id', mockSubscriptionId],
-      ['profile.is_pro_version', 'true'],
-    ]);
-
-    console.log('[IAP-SERVICE] 🧪 Mock purchase completed successfully!');
-
-    // Trigger debug callback
-    if (this.debugCallback) {
-      this.debugCallback({
-        listenerStatus: 'PURCHASE SUCCESS! ✅ (DEV MODE)',
-        shouldNavigate: true,
-        purchaseComplete: true
-      });
     }
   }
 
@@ -488,17 +406,6 @@ class IAPService {
     if (!this.isConnected) {
       console.log('[IAP-SERVICE] Not connected, initializing...');
       await this.initialize();
-    }
-
-    // In development mode, simulate the purchase
-    if (this.isDevMode) {
-      try {
-        await this.simulatePurchase(productId);
-        return;
-      } catch (error) {
-        console.error('[IAP-SERVICE] 🧪 Mock purchase failed:', error);
-        throw error;
-      }
     }
 
     // Track current purchase session
@@ -576,12 +483,6 @@ class IAPService {
       await this.initialize();
     }
 
-    // In development mode, simulate restore
-    if (this.isDevMode) {
-      console.log('[IAP-SERVICE] 🧪 Mock restore in development mode - no purchases to restore');
-      throw new Error('No previous purchases found');
-    }
-
     try {
       await AsyncStorage.setItem(INFLIGHT_KEY, 'true');
       console.log('[IAP-SERVICE] Restoring purchases...');
@@ -632,12 +533,7 @@ class IAPService {
     return {
       isConnected: this.isConnected,
       hasListener: this.hasListener,
-      isDevMode: this.isDevMode,
     };
-  }
-
-  isDevelopmentMode(): boolean {
-    return this.isDevMode;
   }
 
   async cleanup() {
