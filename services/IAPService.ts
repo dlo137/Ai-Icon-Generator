@@ -476,7 +476,10 @@ class IAPService {
         await RNIap.requestPurchase({
           type: 'subs',
           request: {
-            apple: { sku: productId }
+            ios: {
+              sku: productId,
+              quantity: 1
+            }
           }
         });
       } else {
