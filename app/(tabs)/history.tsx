@@ -189,8 +189,8 @@ export default function HistoryScreen() {
             if (filter === 'saved') {
               filteredThumbnails = thumbnails.filter(t => t.isFavorited);
             } else if (filter === 'all') {
-              // Limit "All" section to 5 most recent thumbnails
-              filteredThumbnails = thumbnails.slice(0, 5);
+              // Show all thumbnails in the "All" section
+              filteredThumbnails = thumbnails;
             }
 
             return filteredThumbnails.length > 0 ? (

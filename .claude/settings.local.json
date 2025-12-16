@@ -57,7 +57,8 @@
       "Bash(eas credentials:*)",
       "Bash(eas submit:*)",
       "Bash(ls:*)",
-      "Bash(del \"C:\\Users\\aidaw\\Desktop\\Code\\IconGenerator\\supabase\\migrations\\20241215000001_add_subscription_columns.sql\")"
+      "Bash(del \"C:\\Users\\aidaw\\Desktop\\Code\\IconGenerator\\supabase\\migrations\\20241215000001_add_subscription_columns.sql\")",
+      "Bash(wc:*)"
     ],
     "deny": [],
     "ask": []

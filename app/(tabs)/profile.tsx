@@ -11,6 +11,7 @@ import { getSubscriptionInfo, SubscriptionInfo, getCredits, CreditsInfo } from '
 import { getSubscriptionInfo as getSupabaseSubscriptionInfo, changePlan, cancelSubscription, SubscriptionPlan } from '../../src/features/subscription/api';
 import * as StoreReview from 'expo-store-review';
 import IAPService from '../../services/IAPService';
+import Constants from 'expo-constants';
 
 export default function ProfileScreen() {
   const storeUrl = Platform.OS === 'android'
@@ -57,24 +58,32 @@ export default function ProfileScreen() {
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [currentPurchaseAttempt, setCurrentPurchaseAttempt] = useState<'monthly' | 'yearly' | 'weekly' | null>(null);
 
-  const PRODUCT_IDS = {
+  // Platform-specific product IDs (must match subscriptionScreen.tsx)
+  const PRODUCT_IDS = Platform.OS === 'ios' ? {
     yearly: 'icon.yearly',
     monthly: 'icon.monthly',
     weekly: 'icon.weekly',
+  } : {
+    yearly: 'ai.icon.pro:yearly',
+    monthly: 'ai.icon.pro:monthly',
+    weekly: 'ai.icon.pro:weekly',
   };
 
   const isIAPAvailable = IAPService.isAvailable();
+
+  // Check if running in Expo Go
+  const isExpoGo = Constants.appOwnership === 'expo';
 
   const settings = [
     { id: 'about', title: 'About', subtitle: 'App information' },
     { id: 'upgrade', title: 'Plans', subtitle: 'Choose a subscription plan' },
     { id: 'billing', title: 'Billing & Subscription', subtitle: 'Manage your current subscription' },
     // Only show rate button on iOS
-    ...(Platform.OS === 'ios' ? [{
-      id: 'rate',
-      title: 'Rate the App',
-      subtitle: 'Share your feedback on the App Store'
-    }] : []),
+    // ...(Platform.OS === 'ios' ? [{
+    //   id: 'rate',
+    //   title: 'Rate the App',
+    //   subtitle: 'Share your feedback on the App Store'
+    // }] : []),
   ];
 
   const subscriptionPlans = [
@@ -216,27 +225,57 @@ export default function ProfileScreen() {
       return [];
     }
 
-    console.log('[PROFILE] Fetching products...');
+    console.log('[PROFILE] 🔍 Fetching products...');
     try {
       setLoadingProducts(true);
       const results = await IAPService.getProducts();
+      console.log('[PROFILE] 📦 Products received:', results?.length || 0);
+
       if (results?.length) {
         setProducts(results);
-        console.log('[PROFILE] Products loaded:', results.map(p => `${(p as any).productId}: ${p.price}`).join(', '));
+        console.log('[PROFILE] ✅ Products loaded successfully:');
+        results.forEach(p => {
+          console.log(`[PROFILE]   - ${(p as any).productId}: ${p.price} (${p.title})`);
+        });
         return results;
       } else {
         setProducts([]);
-        console.log('[PROFILE] No products available');
+        console.warn('[PROFILE] ⚠️ No products returned from App Store');
+        console.warn('[PROFILE] ⚠️ Check console logs above for detailed error info');
+
         if (showErrors) {
-          Alert.alert('Products Unavailable', 'Could not load subscription products. Please check your internet connection and try again.');
+          Alert.alert(
+            'No Products Found',
+            'Could not load any subscription products.\n\n' +
+            'Possible causes:\n' +
+            '• Products not created in App Store Connect\n' +
+            '• Bundle ID mismatch\n' +
+            '• Paid Apps Agreement not signed\n\n' +
+            'Check the console logs for detailed error information.',
+            [{ text: 'OK' }]
+          );
         }
         return [];
       }
-    } catch (err) {
+    } catch (err: any) {
       setProducts([]);
-      console.error('[PROFILE] Error fetching products:', err);
+      console.error('[PROFILE] ❌ Error fetching products:', err);
+      console.error('[PROFILE] ❌ Error details:', {
+        message: err?.message,
+        code: err?.code,
+        type: typeof err
+      });
+
       if (showErrors) {
-        Alert.alert('Error', 'Failed to load products: ' + String(err instanceof Error ? err.message : err));
+        const errorMsg = err?.message || String(err);
+        Alert.alert(
+          'Failed to Load Products',
+          `Error: ${errorMsg}\n\nPlease check:\n` +
+          '• Internet connection\n' +
+          '• App Store Connect setup\n' +
+          '• Console logs for details',
+          [{ text: 'OK' }]
+        );
       }
       return [];
     } finally {
@@ -493,6 +532,62 @@ export default function ProfileScreen() {
     }
   };
 
+  const simulateUpgradeInExpoGo = async (planId: string) => {
+    try {
+      console.log('[EXPO GO] Simulating upgrade for plan:', planId);
+
+      // Get current user
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
+        throw new Error('User not authenticated');
+      }
+
+      console.log('[EXPO GO] User ID:', user.id);
+
+      // Determine credits based on plan
+      let credits_max = 0;
+      switch (planId) {
+        case 'yearly': credits_max = 90; break;
+        case 'monthly': credits_max = 75; break;
+        case 'weekly': credits_max = 10; break;
+      }
+
+      // Update profile with subscription data
+      console.log('[EXPO GO] Updating profile with subscription data...');
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({
+          subscription_plan: planId,
+          is_pro_version: true,
+          subscription_id: `test_${planId}_${Date.now()}`,
+          purchase_time: new Date().toISOString(),
+          credits_current: credits_max,
+          credits_max: credits_max,
+          last_credit_reset: new Date().toISOString()
+        })
+        .eq('id', user.id);
+
+      if (updateError) throw updateError;
+
+      console.log('[EXPO GO] Simulated upgrade successful!');
+
+      // Close modals and reload data
+      setIsBillingModalVisible(false);
+      setIsBillingManagementModalVisible(false);
+      await loadUserData();
+
+      // Show success message
+      Alert.alert(
+        'Success (Expo Go Simulation)',
+        `Your plan has been upgraded to ${planId}!\n\nNote: This is a simulated upgrade for testing in Expo Go.`,
+        [{ text: 'OK' }]
+      );
+    } catch (error: any) {
+      console.error('[EXPO GO] Simulated upgrade error:', error);
+      Alert.alert('Error', error.message || 'Failed to simulate upgrade');
+    }
+  };
+
   const handleSubscribe = async (planId: string) => {
     const plan = subscriptionPlans.find(p => p.id === planId);
     if (!plan) return;
@@ -526,6 +621,12 @@ export default function ProfileScreen() {
               {
                 text: 'Proceed to Payment',
                 onPress: async () => {
+                  // If running in Expo Go, simulate the upgrade
+                  if (isExpoGo) {
+                    await simulateUpgradeInExpoGo(planId);
+                    return;
+                  }
+
                   // Trigger IAP purchase flow for upgrade
                   if (!isIAPAvailable) {
                     if (__DEV__) {
@@ -580,17 +681,31 @@ export default function ProfileScreen() {
                     return;
                   }
 
-                  const list = products.length ? products : await fetchProducts(true);
+                  // Always fetch products fresh to ensure we have the latest
+                  console.log('[PROFILE-UPGRADE] Fetching products...');
+                  const list = await fetchProducts(true);
                   const productId = PRODUCT_IDS[planId as keyof typeof PRODUCT_IDS];
-                  const product = list.find(p => p.productId === productId);
+
+                  console.log('[PROFILE-UPGRADE] Looking for product:', productId);
+                  console.log('[PROFILE-UPGRADE] Available products:', list.length);
+                  console.log('[PROFILE-UPGRADE] Product details:', list.map(p => ({
+                    productId: (p as any).productId,
+                    id: (p as any).id,
+                    title: p.title
+                  })));
+
+                  const product = list.find(p => (p as any).productId === productId || (p as any).id === productId);
 
                   if (!product) {
+                    console.log('[PROFILE-UPGRADE] ❌ Product not found!');
                     Alert.alert('Plan not available', 'We couldn\'t find that plan. Please try again.');
                     return;
                   }
 
+                  console.log('[PROFILE-UPGRADE] ✅ Product found:', (product as any).productId || (product as any).id);
+
                   setCurrentPurchaseAttempt(planId as 'monthly' | 'yearly' | 'weekly');
-                  await handlePurchase(product.productId);
+                  await handlePurchase((product as any).productId || (product as any).id);
                 }
               }
             ]
@@ -621,6 +736,12 @@ export default function ProfileScreen() {
         }
       } else {
         // New subscription - use IAP
+        // If running in Expo Go, simulate the purchase
+        if (isExpoGo) {
+          await simulateUpgradeInExpoGo(planId);
+          return;
+        }
+
         if (!isIAPAvailable) {
           // For development/testing: Allow bypass in development mode
           if (__DEV__) {
@@ -684,11 +805,23 @@ export default function ProfileScreen() {
           return;
         }
 
-        const list = products.length ? products : await fetchProducts(true);
+        // Always fetch products fresh to ensure we have the latest
+        console.log('[PROFILE-NEW-SUB] Fetching products...');
+        const list = await fetchProducts(true);
         const productId = PRODUCT_IDS[planId as keyof typeof PRODUCT_IDS];
-        const product = list.find(p => p.productId === productId);
+
+        console.log('[PROFILE-NEW-SUB] Looking for product:', productId);
+        console.log('[PROFILE-NEW-SUB] Available products:', list.length);
+        console.log('[PROFILE-NEW-SUB] Product details:', list.map(p => ({
+          productId: (p as any).productId,
+          id: (p as any).id,
+          title: p.title
+        })));
+
+        const product = list.find(p => (p as any).productId === productId || (p as any).id === productId);
 
         if (!product) {
+          console.log('[PROFILE-NEW-SUB] ❌ Product not found!');
           Alert.alert(
             'Plan not available',
             'We couldn\'t find that plan. Please check your internet connection and try again.'
@@ -696,9 +829,11 @@ export default function ProfileScreen() {
           return;
         }
 
+        console.log('[PROFILE-NEW-SUB] ✅ Product found:', (product as any).productId || (product as any).id);
+
         // Set the current purchase attempt BEFORE starting the purchase
         setCurrentPurchaseAttempt(planId as 'monthly' | 'yearly' | 'weekly');
-        await handlePurchase(product.productId);
+        await handlePurchase((product as any).productId || (product as any).id);
       }
     } catch (error) {
       setCurrentPurchaseAttempt(null);
@@ -795,17 +930,27 @@ export default function ProfileScreen() {
     );
   };
 
-  const handleUpgradeFromBilling = () => {
+  const handleUpgradeFromBilling = async () => {
     setIsBillingManagementModalVisible(false);
+    // Ensure products are loaded before opening billing modal
+    if (!products.length) {
+      console.log('[PROFILE] Fetching products before opening billing modal...');
+      await fetchProducts(true);
+    }
     setIsBillingModalVisible(true);
   };
 
-  const handleSettingPress = (settingId: string) => {
+  const handleSettingPress = async (settingId: string) => {
     switch (settingId) {
       case 'rate':
         handleRateApp();
         break;
       case 'upgrade':
+        // Ensure products are loaded before opening billing modal
+        if (!products.length) {
+          console.log('[PROFILE] Fetching products before opening billing modal...');
+          await fetchProducts(true);
+        }
         setIsBillingModalVisible(true);
         break;
       case 'billing':
@@ -1042,6 +1187,13 @@ export default function ProfileScreen() {
           colors={['#050810', '#0d1120', '#08091a']}
           style={styles.gradientModalOverlay}
         >
+          {/* Expo Go Banner */}
+          {isExpoGo && (
+            <View style={styles.expoGoBanner}>
+              <Text style={styles.expoGoBannerText}>🧪 Expo Go - Purchases will be simulated</Text>
+            </View>
+          )}
+
           {/* Close Button */}
           <TouchableOpacity
             style={styles.modalCloseButton}
@@ -1231,6 +1383,22 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: BG,
+  },
+  expoGoBanner: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#f59e0b',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    zIndex: 100,
+    alignItems: 'center',
+  },
+  expoGoBannerText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#000000',
   },
   content: {
     flex: 1,

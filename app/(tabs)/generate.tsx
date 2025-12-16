@@ -1070,12 +1070,26 @@ export default function GenerateScreen() {
         setGeneratedImageUrl2(url2 || '');
         setGeneratedImageUrl3(url3 || '');
 
-        // Automatically add to history (not favorited) - silently fail if not authenticated
+        // Automatically add all 3 variations to history (not favorited) - silently fail if not authenticated
         if (url1) {
           try {
             await addThumbnailToHistory(promptToUse, url1);
           } catch (historyError) {
-            console.log('Skipping history save (not authenticated):', historyError);
+            console.log('Skipping history save for url1 (not authenticated):', historyError);
+          }
+        }
+        if (url2) {
+          try {
+            await addThumbnailToHistory(promptToUse, url2);
+          } catch (historyError) {
+            console.log('Skipping history save for url2 (not authenticated):', historyError);
+          }
+        }
+        if (url3) {
+          try {
+            await addThumbnailToHistory(promptToUse, url3);
+          } catch (historyError) {
+            console.log('Skipping history save for url3 (not authenticated):', historyError);
           }
         }
 
