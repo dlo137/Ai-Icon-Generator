@@ -212,14 +212,22 @@ export async function signInWithApple() {
       // Check if profile exists
       const { data: existingProfile } = await supabase
         .from('profiles')
-        .select('id, onboarding_completed')
+        .select('id, onboarding_completed, email, name')
         .eq('id', data.user.id)
         .single();
 
       const updates: any = {};
 
+      // Always save the email from Apple (unless it's already set)
+      // This includes both real emails and private relay emails
+      if (data.user.email && (!existingProfile?.email || existingProfile.email !== data.user.email)) {
+        updates.email = data.user.email;
+        console.log('[Apple Sign In] Saving email to profile:', data.user.email);
+      }
+
       // If new user with full name from Apple, add it
-      if (fullName) {
+      // Note: Apple only provides fullName on FIRST sign in, not on subsequent sign ins
+      if (fullName && !existingProfile?.name) {
         const fullNameString = [
           fullName.givenName,
           fullName.familyName,
@@ -229,6 +237,22 @@ export async function signInWithApple() {
 
         if (fullNameString) {
           updates.name = fullNameString;
+          console.log('[Apple Sign In] Saving name to profile:', fullNameString);
+        }
+      }
+
+      // If no name was provided by Apple (subsequent sign-ins), use email prefix as fallback
+      if (!updates.name && !existingProfile?.name && data.user.email) {
+        // Check if it's a private relay email
+        const isPrivateEmail = data.user.email.includes('@privaterelay.appleid.com');
+        if (!isPrivateEmail) {
+          // Use real email prefix as name
+          updates.name = data.user.email.split('@')[0];
+          console.log('[Apple Sign In] Using email prefix as name:', updates.name);
+        } else {
+          // For private emails, use a generic name
+          updates.name = 'User';
+          console.log('[Apple Sign In] Using generic name for private relay email');
         }
       }
 
@@ -239,6 +263,7 @@ export async function signInWithApple() {
 
       // Update profile if there are updates
       if (Object.keys(updates).length > 0) {
+        console.log('[Apple Sign In] Updating profile with:', updates);
         await supabase
           .from('profiles')
           .update(updates)

@@ -479,7 +479,16 @@ class IAPService {
       // Set a timeout
       setTimeout(() => {
         if (this.purchasePromiseReject) {
-          this.purchasePromiseReject(new Error('Purchase timeout'));
+          console.log('[IAP-SERVICE] ⏱️ Purchase timeout after 60 seconds');
+
+          // Notify UI of timeout
+          if (this.debugCallback) {
+            this.debugCallback({
+              listenerStatus: 'PURCHASE TIMEOUT - Please try again ⏱️'
+            });
+          }
+
+          this.purchasePromiseReject(new Error('Purchase timeout - The purchase is taking too long. Please check your connection and try again.'));
           this.purchasePromiseResolve = null;
           this.purchasePromiseReject = null;
         }

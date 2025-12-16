@@ -123,6 +123,27 @@ export default function SubscriptionScreen() {
     }
   }, [handleIAPCallback, iapReady]);
 
+  // Safety timeout to clear loading state if stuck
+  useEffect(() => {
+    if (currentPurchaseAttempt) {
+      console.log('[SUBSCRIPTION] Purchase started, setting safety timeout...');
+      // Set a safety timeout of 90 seconds (longer than IAP timeout)
+      const safetyTimeout = setTimeout(() => {
+        console.warn('[SUBSCRIPTION] Safety timeout triggered - clearing loading state');
+        setCurrentPurchaseAttempt(null);
+        Alert.alert(
+          'Purchase Taking Too Long',
+          'The purchase is taking longer than expected. If you were charged, don\'t worry - the purchase will be processed automatically. Please restart the app.',
+          [{ text: 'OK' }]
+        );
+      }, 90000); // 90 seconds
+
+      return () => {
+        clearTimeout(safetyTimeout);
+      };
+    }
+  }, [currentPurchaseAttempt]);
+
   const initializeIAP = async () => {
     if (!isIAPAvailable) {
       console.log('[SUBSCRIPTION] IAP not available on this platform');
@@ -427,6 +448,17 @@ export default function SubscriptionScreen() {
       // Handle user cancellation
       if (/user.*(cancel|abort)/i.test(msg) || /cancel/i.test(msg)) {
         console.log('[SUBSCRIPTION] Purchase was cancelled by user');
+        return;
+      }
+
+      // Handle timeout
+      if (/timeout/i.test(msg)) {
+        console.error('[SUBSCRIPTION] Purchase timeout');
+        Alert.alert(
+          'Purchase Timeout',
+          'The purchase is taking too long. Please check your connection and try again. If you were charged, the purchase will be processed automatically.',
+          [{ text: 'OK' }]
+        );
         return;
       }
 
