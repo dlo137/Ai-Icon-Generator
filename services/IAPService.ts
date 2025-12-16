@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Alert, Platform } from 'react-native';
+import { Platform } from 'react-native';
 import { supabase } from '../lib/supabase';
 import * as RNIap from 'react-native-iap';
 import type {
@@ -30,8 +30,6 @@ class IAPService {
   private processedIds: Set<string> = new Set();
   private lastPurchaseResult: any = null;
   private debugCallback: ((info: any) => void) | null = null;
-  private currentPurchaseStartTime: number | null = null;
-  private currentPurchaseProductId: string | null = null;
   private purchasePromiseResolve: ((value: void) => void) | null = null;
   private purchasePromiseReject: ((reason?: any) => void) | null = null;
   private purchaseUpdateSubscription: any = null;
@@ -129,8 +127,6 @@ class IAPService {
         }
 
         // Clear purchase tracking
-        this.currentPurchaseStartTime = null;
-        this.currentPurchaseProductId = null;
         AsyncStorage.setItem(INFLIGHT_KEY, 'false');
 
         // Reject the purchase promise
@@ -295,7 +291,7 @@ class IAPService {
       console.log('[IAP-SERVICE] Finishing transaction...');
       if (Platform.OS === 'android') {
         // On Android, acknowledge the purchase
-        await RNIap.acknowledgePurchaseAndroid(purchase.purchaseToken);
+        await RNIap.acknowledgePurchaseAndroid(purchase.purchaseToken!);
       } else {
         // On iOS, finish the transaction
         await RNIap.finishTransaction({ purchase, isConsumable: false });
@@ -305,10 +301,6 @@ class IAPService {
       if (shouldEntitle) {
         console.log('[IAP-SERVICE] Clearing in-flight flag...');
         await AsyncStorage.setItem(INFLIGHT_KEY, 'false');
-
-        // Clear purchase session tracking on success
-        this.currentPurchaseStartTime = null;
-        this.currentPurchaseProductId = null;
 
         console.log(`[IAP-SERVICE] ✅ Purchase complete from ${source}!`);
 
@@ -335,32 +327,51 @@ class IAPService {
 
     try {
       const productIds = Platform.OS === 'ios' ? IOS_PRODUCT_IDS : ANDROID_PRODUCT_IDS;
-      console.log('[IAP-SERVICE] Fetching products for', Platform.OS, ':', productIds);
+      console.log('[IAP-SERVICE] 🔍 Fetching products for', Platform.OS, ':', productIds);
 
-      // Get subscriptions (most IAP products are subscriptions)
-      const products = await RNIap.getSubscriptions({ skus: productIds });
-      console.log('[IAP-SERVICE] Products loaded:', products.length);
+      // Try getSubscriptions first (for auto-renewable subscriptions)
+      console.log('[IAP-SERVICE] Trying getSubscriptions()...');
+      let products = await (RNIap as any).getSubscriptions({ skus: productIds });
+      console.log('[IAP-SERVICE] getSubscriptions() returned:', products.length, 'products');
+
+      // If no products found, try getProducts as fallback (for non-renewing subscriptions, consumables, etc.)
+      if (products.length === 0) {
+        console.log('[IAP-SERVICE] ⚠️ No subscriptions found, trying getProducts() fallback...');
+        products = await (RNIap as any).getProducts({ skus: productIds });
+        console.log('[IAP-SERVICE] getProducts() returned:', products.length, 'products');
+      }
+
+      // Log what Apple actually returned
+      console.log('[IAP-SERVICE] 📦 Total products loaded:', products.length);
+      console.log('[IAP-SERVICE] Returned product IDs:', products.map((p: any) => p.productId || p.id));
 
       // Log each product for debugging
       if (products.length > 0) {
         products.forEach((p: any) => {
-          console.log('[IAP-SERVICE] Product:', {
+          console.log('[IAP-SERVICE] ✅ Product:', {
             productId: p.productId || p.id,
             title: p.title,
             price: p.price,
-            currency: p.currency
+            currency: p.currency,
+            type: p.type
           });
         });
       } else {
-        console.warn('[IAP-SERVICE] ⚠️ No products returned from App Store!');
-        console.warn('[IAP-SERVICE] Expected product IDs:', productIds);
-        console.warn('[IAP-SERVICE] Make sure products are created in App Store Connect and approved for testing');
+        console.error('[IAP-SERVICE] ❌ ZERO products returned from App Store!');
+        console.error('[IAP-SERVICE] Expected product IDs:', productIds);
+        console.error('[IAP-SERVICE] Troubleshooting:');
+        console.error('[IAP-SERVICE]   1. Verify products exist in App Store Connect with exact IDs above');
+        console.error('[IAP-SERVICE]   2. Ensure products are "Ready to Submit" or "Approved"');
+        console.error('[IAP-SERVICE]   3. Check bundle ID matches App Store Connect');
+        console.error('[IAP-SERVICE]   4. Verify products are added to subscription group');
+        console.error('[IAP-SERVICE]   5. Sign out of App Store on device and sign in with test account');
       }
 
       return products;
     } catch (err) {
-      console.error('[IAP-SERVICE] Error fetching products:', err);
-      console.error('[IAP-SERVICE] Error details:', JSON.stringify(err, null, 2));
+      console.error('[IAP-SERVICE] ❌ Error fetching products:', err);
+      console.error('[IAP-SERVICE] Error message:', (err as any)?.message || 'Unknown error');
+      console.error('[IAP-SERVICE] Full error details:', JSON.stringify(err, null, 2));
       return [];
     }
   }
@@ -370,10 +381,6 @@ class IAPService {
       console.log('[IAP-SERVICE] Not connected, initializing...');
       await this.initialize();
     }
-
-    // Track current purchase session
-    this.currentPurchaseStartTime = Date.now();
-    this.currentPurchaseProductId = productId;
 
     console.log(`[IAP-SERVICE] Setting in-flight flag and attempting purchase: ${productId}`);
     await AsyncStorage.setItem(INFLIGHT_KEY, 'true');
@@ -397,9 +404,9 @@ class IAPService {
       console.log('[IAP-SERVICE] Requesting purchase...');
 
       if (Platform.OS === 'android') {
-        await RNIap.requestSubscription({ sku: productId });
+        await (RNIap as any).requestSubscription({ sku: productId });
       } else {
-        await RNIap.requestSubscription({ sku: productId });
+        await (RNIap as any).requestSubscription({ sku: productId });
       }
 
       if (this.debugCallback) {
@@ -416,10 +423,6 @@ class IAPService {
     } catch (error: any) {
       console.error('[IAP-SERVICE] Purchase failed:', error);
       await AsyncStorage.setItem(INFLIGHT_KEY, 'false');
-
-      // Clear session tracking on error
-      this.currentPurchaseStartTime = null;
-      this.currentPurchaseProductId = null;
 
       // Clear promise handlers
       this.purchasePromiseResolve = null;
