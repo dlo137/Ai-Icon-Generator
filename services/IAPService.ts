@@ -341,9 +341,26 @@ class IAPService {
       const products = await RNIap.getSubscriptions({ skus: productIds });
       console.log('[IAP-SERVICE] Products loaded:', products.length);
 
+      // Log each product for debugging
+      if (products.length > 0) {
+        products.forEach((p: any) => {
+          console.log('[IAP-SERVICE] Product:', {
+            productId: p.productId || p.id,
+            title: p.title,
+            price: p.price,
+            currency: p.currency
+          });
+        });
+      } else {
+        console.warn('[IAP-SERVICE] ⚠️ No products returned from App Store!');
+        console.warn('[IAP-SERVICE] Expected product IDs:', productIds);
+        console.warn('[IAP-SERVICE] Make sure products are created in App Store Connect and approved for testing');
+      }
+
       return products;
     } catch (err) {
       console.error('[IAP-SERVICE] Error fetching products:', err);
+      console.error('[IAP-SERVICE] Error details:', JSON.stringify(err, null, 2));
       return [];
     }
   }

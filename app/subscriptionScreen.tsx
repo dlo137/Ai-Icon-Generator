@@ -49,7 +49,7 @@ export default function SubscriptionScreen() {
   const isIAPAvailable = IAPService.isAvailable();
 
   // Check if running in Expo Go
-  const isExpoGo = Constants.appOwnership === 'expo';
+  const isExpoGo = Constants.executionEnvironment === 'storeClient';
 
   // Stable callback for IAP events
   const handleIAPCallback = useCallback((info: any) => {
@@ -173,7 +173,7 @@ export default function SubscriptionScreen() {
       const results = await IAPService.getProducts();
       if (results?.length) {
         setProducts(results);
-        console.log('[SUBSCRIPTION] Products loaded:', results.map(p => `${p.productId}: ${p.price}`).join(', '));
+        console.log('[SUBSCRIPTION] Products loaded:', results.map(p => `${(p as any).productId}: ${p.price}`).join(', '));
         return results;
       } else {
         setProducts([]);
@@ -209,7 +209,7 @@ export default function SubscriptionScreen() {
 
     const list = products.length ? products : await fetchProducts(true);
     const planId = PRODUCT_IDS[selectedPlan];
-    const product = list.find(p => p.productId === planId);
+    const product = list.find(p => (p as any).productId === planId);
 
     if (!product) {
       Alert.alert(
@@ -221,7 +221,7 @@ export default function SubscriptionScreen() {
 
     // Set the current purchase attempt BEFORE starting the purchase
     setCurrentPurchaseAttempt(selectedPlan);
-    await handlePurchase(product.productId);
+    await handlePurchase((product as any).productId);
   };
 
   const simulatePurchaseInExpoGo = async () => {
@@ -432,7 +432,7 @@ export default function SubscriptionScreen() {
   };
 
   // Helper function to format price - always use fallback to show "/week" format
-  const formatPrice = (plan: string, fallbackPrice: string) => {
+  const formatPrice = (fallbackPrice: string) => {
     // Always return the fallback price to maintain consistent "/week" format
     // Apple's IAP prices don't include the duration suffix
     return fallbackPrice;
@@ -516,7 +516,7 @@ export default function SubscriptionScreen() {
               <Text style={styles.planName}>Weekly</Text>
             </View>
             <View style={styles.planPricing}>
-              <Text style={styles.planPrice}>{formatPrice('weekly', '$2.99/week')}</Text>
+              <Text style={styles.planPrice}>{formatPrice('$2.99/week')}</Text>
               <Text style={styles.planSubtext}>10 images per week</Text>
             </View>
           </TouchableOpacity>
@@ -536,7 +536,7 @@ export default function SubscriptionScreen() {
               <Text style={styles.planName}>Monthly</Text>
             </View>
             <View style={styles.planPricing}>
-              <Text style={styles.planPrice}>{formatPrice('monthly', '$5.99/month')}</Text>
+              <Text style={styles.planPrice}>{formatPrice('$5.99/month')}</Text>
               <Text style={styles.planSubtext}>75 images per month</Text>
             </View>
           </TouchableOpacity>
@@ -557,7 +557,7 @@ export default function SubscriptionScreen() {
               <Text style={styles.planName}>Yearly</Text>
             </View>
             <View style={styles.planPricing}>
-              <Text style={styles.planPrice}>{formatPrice('yearly', '$59.99/year')}</Text>
+              <Text style={styles.planPrice}>{formatPrice('$59.99/year')}</Text>
               <Text style={styles.planSubtext}>90 images per month</Text>
             </View>
           </TouchableOpacity>
@@ -738,7 +738,7 @@ export default function SubscriptionScreen() {
                   console.error('[SUBSCRIPTION] Error completing onboarding:', err);
                 }
                 try {
-                  await router.replace('/(tabs)/generate');
+                  router.replace('/(tabs)/generate');
                   console.log('[SUBSCRIPTION] Manual navigation successful');
                 } catch (err) {
                   console.error('[SUBSCRIPTION] Manual navigation failed:', err);

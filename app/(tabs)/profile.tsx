@@ -235,13 +235,22 @@ export default function ProfileScreen() {
         setProducts(results);
         console.log('[PROFILE] ✅ Products loaded successfully:');
         results.forEach(p => {
-          console.log(`[PROFILE]   - ${(p as any).productId}: ${p.price} (${p.title})`);
+          console.log('[PROFILE]   - Product:', {
+            productId: (p as any).productId || (p as any).id,
+            title: p.title,
+            price: p.price,
+            currency: (p as any).currency
+          });
         });
         return results;
       } else {
         setProducts([]);
-        console.warn('[PROFILE] ⚠️ No products returned from App Store');
-        console.warn('[PROFILE] ⚠️ Check console logs above for detailed error info');
+        const expectedIds = Platform.OS === 'ios'
+          ? ['icon.yearly', 'icon.monthly', 'icon.weekly']
+          : ['ai.icon.pro:yearly', 'ai.icon.pro:monthly', 'ai.icon.pro:weekly'];
+        console.warn('[PROFILE] ⚠️ No products returned from App Store!');
+        console.warn('[PROFILE] Expected product IDs:', expectedIds);
+        console.warn('[PROFILE] Make sure products are created in App Store Connect and approved for testing');
 
         if (showErrors) {
           Alert.alert(
@@ -260,11 +269,9 @@ export default function ProfileScreen() {
     } catch (err: any) {
       setProducts([]);
       console.error('[PROFILE] ❌ Error fetching products:', err);
-      console.error('[PROFILE] ❌ Error details:', {
-        message: err?.message,
-        code: err?.code,
-        type: typeof err
-      });
+      console.error('[PROFILE] ❌ Error message:', err?.message || 'Unknown error');
+      console.error('[PROFILE] ❌ Error code:', err?.code);
+      console.error('[PROFILE] ❌ Full error details:', JSON.stringify(err, null, 2));
 
       if (showErrors) {
         const errorMsg = err?.message || String(err);
