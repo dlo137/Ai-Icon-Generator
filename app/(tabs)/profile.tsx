@@ -574,7 +574,12 @@ export default function ProfileScreen() {
       // Close modals and reload data
       setIsBillingModalVisible(false);
       setIsBillingManagementModalVisible(false);
+
+      // Wait a moment for database to update, then reload
+      console.log('[EXPO GO] Reloading user data...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
       await loadUserData();
+      console.log('[EXPO GO] User data reloaded');
 
       // Show success message
       Alert.alert(
@@ -665,7 +670,13 @@ export default function ProfileScreen() {
                                 if (updateError) throw updateError;
 
                                 setIsBillingModalVisible(false);
+
+                                // Wait a moment for database to update, then reload
+                                console.log('[DEV MODE] Reloading user data...');
+                                await new Promise(resolve => setTimeout(resolve, 1000));
                                 await loadUserData();
+                                console.log('[DEV MODE] User data reloaded');
+
                                 Alert.alert('Success (Simulated)', 'Your plan has been upgraded (development mode).');
                               } catch (error) {
                                 console.error('Test upgrade error:', error);
@@ -721,9 +732,16 @@ export default function ProfileScreen() {
                 text: 'Confirm',
                 onPress: async () => {
                   try {
+                    console.log('[PROFILE] Changing plan to:', planId);
                     await changePlan(planId as SubscriptionPlan);
                     setIsBillingModalVisible(false);
+
+                    // Wait a moment for database to update, then reload
+                    console.log('[PROFILE] Plan changed, reloading user data...');
+                    await new Promise(resolve => setTimeout(resolve, 1000));
                     await loadUserData();
+                    console.log('[PROFILE] User data reloaded');
+
                     Alert.alert('Plan Changed', `Your plan will be downgraded to ${plan.name} at the end of your current billing cycle.`);
                   } catch (error) {
                     console.error('Error changing plan:', error);
@@ -855,7 +873,12 @@ export default function ProfileScreen() {
       // On success, close modal and reload data
       setIsBillingModalVisible(false);
       setCurrentPurchaseAttempt(null);
+
+      // Wait a moment for database to update, then reload
+      console.log('[PROFILE] Purchase successful, reloading user data...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
       await loadUserData();
+      console.log('[PROFILE] User data reloaded');
 
       Alert.alert(
         'Success!',

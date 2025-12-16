@@ -123,27 +123,6 @@ export default function SubscriptionScreen() {
     }
   }, [handleIAPCallback, iapReady]);
 
-  // Safety timeout to clear loading state if stuck
-  useEffect(() => {
-    if (currentPurchaseAttempt) {
-      console.log('[SUBSCRIPTION] Purchase started, setting safety timeout...');
-      // Set a safety timeout of 90 seconds (longer than IAP timeout)
-      const safetyTimeout = setTimeout(() => {
-        console.warn('[SUBSCRIPTION] Safety timeout triggered - clearing loading state');
-        setCurrentPurchaseAttempt(null);
-        Alert.alert(
-          'Purchase Taking Too Long',
-          'The purchase is taking longer than expected. If you were charged, don\'t worry - the purchase will be processed automatically. Please restart the app.',
-          [{ text: 'OK' }]
-        );
-      }, 90000); // 90 seconds
-
-      return () => {
-        clearTimeout(safetyTimeout);
-      };
-    }
-  }, [currentPurchaseAttempt]);
-
   const initializeIAP = async () => {
     if (!isIAPAvailable) {
       console.log('[SUBSCRIPTION] IAP not available on this platform');
@@ -188,67 +167,27 @@ export default function SubscriptionScreen() {
       return [];
     }
 
-    console.log('[SUBSCRIPTION] 🔍 Fetching products...');
+    console.log('[SUBSCRIPTION] Fetching products...');
     try {
       setLoadingProducts(true);
       const results = await IAPService.getProducts();
-      console.log('[SUBSCRIPTION] 📦 Products received:', results?.length || 0);
-
       if (results?.length) {
         setProducts(results);
-        console.log('[SUBSCRIPTION] ✅ Products loaded successfully:');
-        results.forEach(p => {
-          console.log(`[SUBSCRIPTION]   - ${(p as any).productId}: ${p.price} (${p.title})`);
-        });
+        console.log('[SUBSCRIPTION] Products loaded:', results.map(p => `${p.productId}: ${p.price}`).join(', '));
         return results;
       } else {
         setProducts([]);
-        console.warn('[SUBSCRIPTION] ⚠️ No products returned from App Store');
-        console.warn('[SUBSCRIPTION] ⚠️ Check console logs above for detailed error info');
-
+        console.log('[SUBSCRIPTION] No products available');
         if (showErrors) {
-          Alert.alert(
-            'No Products Found',
-            'Could not load any subscription products.\n\n' +
-            'Possible causes:\n' +
-            '• Products not created in App Store Connect\n' +
-            '• Bundle ID mismatch\n' +
-            '• Paid Apps Agreement not signed\n\n' +
-            'Check the console logs for detailed error information.',
-            [{ text: 'OK' }]
-          );
+          Alert.alert('Products Unavailable', 'Could not load subscription products. Please check your internet connection and try again.');
         }
         return [];
       }
-    } catch (err: any) {
+    } catch (err) {
       setProducts([]);
-      console.error('[SUBSCRIPTION] ❌ Error fetching products:', err);
-      console.error('[SUBSCRIPTION] ❌ Error details:', {
-        message: err?.message,
-        code: err?.code,
-        type: typeof err
-      });
-
-      // Update debug info with error
-      setDebugInfo((prev: any) => ({
-        ...prev,
-        lastError: {
-          message: err?.message || String(err),
-          code: err?.code,
-          timestamp: new Date().toISOString()
-        }
-      }));
-
+      console.error('[SUBSCRIPTION] Error fetching products:', err);
       if (showErrors) {
-        const errorMsg = err?.message || String(err);
-        Alert.alert(
-          'Failed to Load Products',
-          `Error: ${errorMsg}\n\nPlease check:\n` +
-          '• Internet connection\n' +
-          '• App Store Connect setup\n' +
-          '• Console logs for details',
-          [{ text: 'OK' }]
-        );
+        Alert.alert('Error', 'Failed to load products: ' + String(err instanceof Error ? err.message : err));
       }
       return [];
     } finally {
@@ -270,10 +209,7 @@ export default function SubscriptionScreen() {
 
     const list = products.length ? products : await fetchProducts(true);
     const planId = PRODUCT_IDS[selectedPlan];
-    const product = list.find(p => {
-      const prodId = (p as any).productId || (p as any).id;
-      return prodId === planId;
-    });
+    const product = list.find(p => p.productId === planId);
 
     if (!product) {
       Alert.alert(
@@ -285,8 +221,7 @@ export default function SubscriptionScreen() {
 
     // Set the current purchase attempt BEFORE starting the purchase
     setCurrentPurchaseAttempt(selectedPlan);
-    const productId = (product as any).productId || (product as any).id;
-    await handlePurchase(productId);
+    await handlePurchase(product.productId);
   };
 
   const simulatePurchaseInExpoGo = async () => {
@@ -663,7 +598,7 @@ export default function SubscriptionScreen() {
       </View>
 
       {/* Debug Panel */}
-      {/* {showDebug && (
+      {showDebug && (
         <View style={styles.debugPanel}>
           <View style={styles.debugHeader}>
             <Text style={styles.debugTitle}>🔧 IAP Debug Monitor</Text>
@@ -790,19 +725,52 @@ export default function SubscriptionScreen() {
             >
               <Text style={styles.debugButtonText}>🔄 Retry Load Products</Text>
             </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.debugButton, { backgroundColor: '#dc2626' }]}
+              onPress={async () => {
+                console.log('[SUBSCRIPTION] Manual navigation triggered');
+                setCurrentPurchaseAttempt(null);
+                try {
+                  await completeOnboarding();
+                  console.log('[SUBSCRIPTION] Onboarding marked complete');
+                } catch (err) {
+                  console.error('[SUBSCRIPTION] Error completing onboarding:', err);
+                }
+                try {
+                  await router.replace('/(tabs)/generate');
+                  console.log('[SUBSCRIPTION] Manual navigation successful');
+                } catch (err) {
+                  console.error('[SUBSCRIPTION] Manual navigation failed:', err);
+                  Alert.alert('Navigation Failed', 'Please restart the app to continue.');
+                }
+              }}
+            >
+              <Text style={styles.debugButtonText}>🚀 Force Navigate to Generate</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.debugButton, { backgroundColor: '#f59e0b' }]}
+              onPress={() => {
+                setCurrentPurchaseAttempt(null);
+                Alert.alert('Loading State Cleared', 'The "Processing..." state has been cleared.');
+              }}
+            >
+              <Text style={styles.debugButtonText}>⏹️ Clear Loading State</Text>
+            </TouchableOpacity>
           </ScrollView>
         </View>
-      )} */}
+      )}
 
       {/* Show Debug Button when panel is hidden */}
-      {/* {!showDebug && (
+      {!showDebug && (
         <TouchableOpacity
           style={styles.showDebugButton}
           onPress={() => setShowDebug(true)}
         >
           <Text style={styles.showDebugText}>🔧</Text>
         </TouchableOpacity>
-      )} */}
+      )}
     </LinearGradient>
   );
 }
