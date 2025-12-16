@@ -69,12 +69,9 @@ class IAPService {
         console.log('[IAP-SERVICE] ✅ Purchase listeners already active');
       }
 
-      // Clear any pending transactions on iOS
-      if (Platform.OS === 'ios') {
-        console.log('[IAP-SERVICE] 🧹 Clearing pending iOS transactions...');
-        await RNIap.clearTransactionIOS();
-        console.log('[IAP-SERVICE] ✅ iOS transactions cleared');
-      }
+      // NOTE: clearTransactionIOS() removed from initialization
+      // It can reset StoreKit session on iOS 17+ and cause empty product responses
+      // Only call this when handling stuck transactions, not on every launch
 
       // Check for unfinished transactions (important for Android)
       console.log('[IAP-SERVICE] 🔍 Checking for pending purchases...');
@@ -330,14 +327,15 @@ class IAPService {
       console.log('[IAP-SERVICE] 🔍 Fetching products for', Platform.OS, ':', productIds);
 
       // Try getSubscriptions first (for auto-renewable subscriptions)
+      // Use array signature (not object) for iOS compatibility
       console.log('[IAP-SERVICE] Trying getSubscriptions()...');
-      let products = await (RNIap as any).getSubscriptions({ skus: productIds });
+      let products = await (RNIap as any).getSubscriptions(productIds);
       console.log('[IAP-SERVICE] getSubscriptions() returned:', products.length, 'products');
 
       // If no products found, try getProducts as fallback (for non-renewing subscriptions, consumables, etc.)
       if (products.length === 0) {
         console.log('[IAP-SERVICE] ⚠️ No subscriptions found, trying getProducts() fallback...');
-        products = await (RNIap as any).getProducts({ skus: productIds });
+        products = await (RNIap as any).getProducts(productIds);
         console.log('[IAP-SERVICE] getProducts() returned:', products.length, 'products');
       }
 
