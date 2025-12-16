@@ -4,7 +4,7 @@ export default {
   expo: {
     name: "AI Icons",
     slug: "ai-icon-generator",
-    version: "1.0.24",
+    version: "1.0.25",
     orientation: "portrait",
     icon: "./assets/icon.png",
     userInterfaceStyle: "light",
