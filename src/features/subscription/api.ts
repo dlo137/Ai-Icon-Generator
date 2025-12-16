@@ -66,15 +66,48 @@ export async function updateSubscriptionInProfile(
     // Check if it's a trial (only yearly has trial)
     const isTrial = plan === 'yearly';
 
-    // Prepare subscription data
-    const subscriptionData: Partial<SubscriptionData> = {
+    // Determine credits based on plan
+    let credits_max = 0;
+    switch (plan) {
+      case 'yearly': credits_max = 90; break;
+      case 'monthly': credits_max = 75; break;
+      case 'weekly': credits_max = 10; break;
+    }
+
+    // Calculate subscription end date based on plan
+    const now = new Date();
+    const startDate = purchaseTime || now.toISOString();
+    const endDate = new Date(startDate);
+    if (plan === 'weekly') {
+      endDate.setDate(endDate.getDate() + 7);
+    } else if (plan === 'monthly') {
+      endDate.setMonth(endDate.getMonth() + 1);
+    } else if (plan === 'yearly') {
+      endDate.setFullYear(endDate.getFullYear() + 1);
+    }
+
+    // Get user's name/email for the name field
+    const userName = user?.user_metadata?.full_name ||
+                    user?.email?.split('@')[0] ||
+                    'User';
+
+    // Prepare subscription data with all necessary fields
+    const subscriptionData = {
       subscription_plan: plan,
       subscription_id: purchaseId,
       price: price,
-      purchase_time: purchaseTime || new Date().toISOString(),
+      purchase_time: startDate,
       is_pro_version: true, // Always true for any paid plan
       is_trial_version: isTrial,
       trial_end_date: isTrial ? calculateTrialEndDate() : null,
+      credits_current: credits_max,
+      credits_max: credits_max,
+      last_credit_reset: startDate,
+      subscription_start_date: startDate,
+      subscription_end_date: endDate.toISOString(),
+      product_id: productId,
+      name: userName,
+      email: user?.email || null,
     };
 
     // Update the profile in Supabase
@@ -177,9 +210,32 @@ export async function changePlan(newPlan: SubscriptionPlan): Promise<void> {
     // Get price for the new plan
     const newPrice = getPriceForPlan(newPlan);
 
-    // Update the subscription plan
-    // Keep existing subscription_id and purchase_time
-    // Update is_trial_version to false since plan changes don't include trials
+    // Determine credits based on new plan
+    let credits_max = 0;
+    switch (newPlan) {
+      case 'yearly': credits_max = 90; break;
+      case 'monthly': credits_max = 75; break;
+      case 'weekly': credits_max = 10; break;
+    }
+
+    // Calculate new subscription end date based on plan
+    const now = new Date();
+    const endDate = new Date();
+    if (newPlan === 'weekly') {
+      endDate.setDate(endDate.getDate() + 7);
+    } else if (newPlan === 'monthly') {
+      endDate.setMonth(endDate.getMonth() + 1);
+    } else if (newPlan === 'yearly') {
+      endDate.setFullYear(endDate.getFullYear() + 1);
+    }
+
+    // Determine product_id based on platform and plan
+    const Platform = require('react-native').Platform;
+    const productId = Platform.OS === 'ios'
+      ? `icon.${newPlan}`
+      : `ai.icon.pro:${newPlan}`;
+
+    // Update the subscription plan with all necessary fields
     const { error: updateError } = await supabase
       .from('profiles')
       .update({
@@ -187,6 +243,11 @@ export async function changePlan(newPlan: SubscriptionPlan): Promise<void> {
         price: newPrice,
         is_trial_version: false,
         trial_end_date: null,
+        credits_current: credits_max,
+        credits_max: credits_max,
+        last_credit_reset: now.toISOString(),
+        subscription_end_date: endDate.toISOString(),
+        product_id: productId,
       })
       .eq('id', user.id);
 
@@ -195,7 +256,7 @@ export async function changePlan(newPlan: SubscriptionPlan): Promise<void> {
       throw updateError;
     }
 
-    console.log(`Successfully changed plan to ${newPlan}`);
+    console.log(`Successfully changed plan to ${newPlan} with ${credits_max} credits`);
   } catch (error) {
     console.error('Failed to change plan:', error);
     throw error;

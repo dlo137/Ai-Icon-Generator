@@ -269,6 +269,21 @@ class IAPService {
           endDate.setFullYear(endDate.getFullYear() + 1);
         }
 
+        // Determine price based on plan
+        let price = 0;
+        if (planToUse === 'weekly') {
+          price = 2.99;
+        } else if (planToUse === 'monthly') {
+          price = 5.99;
+        } else if (planToUse === 'yearly') {
+          price = 59.99;
+        }
+
+        // Get user's name/email for the name field
+        const userName = userData?.user?.user_metadata?.full_name ||
+                        userData?.user?.email?.split('@')[0] ||
+                        'User';
+
         const updateData = {
           subscription_plan: planToUse,
           subscription_id: subscriptionId,
@@ -277,7 +292,12 @@ class IAPService {
           credits_max: credits_max,
           subscription_start_date: now,
           subscription_end_date: endDate.toISOString(),
-          last_credit_reset: now
+          last_credit_reset: now,
+          purchase_time: now,
+          product_id: purchase.productId,
+          price: price,
+          name: userName,
+          email: userData?.user?.email || null
         };
 
         console.log('[IAP-SERVICE] Updating profile with data:', updateData);
