@@ -617,6 +617,16 @@ export default function SubscriptionScreen() {
             </View>
 
             <View style={styles.debugSection}>
+              <Text style={styles.debugSectionTitle}>App Configuration</Text>
+              <Text style={styles.debugText}>
+                Bundle ID: com.watson.AI-Icon-Generator
+              </Text>
+              <Text style={[styles.debugTextSmall, { color: '#fbbf24', marginTop: 4 }]}>
+                ⚠️ Verify this EXACTLY matches App Store Connect
+              </Text>
+            </View>
+
+            <View style={styles.debugSection}>
               <Text style={styles.debugSectionTitle}>Connection</Text>
               <Text style={styles.debugText}>
                 IAP Available: {isIAPAvailable ? '✅' : '❌'}
@@ -651,11 +661,23 @@ export default function SubscriptionScreen() {
                 Platform: {Platform.OS}
               </Text>
               <Text style={styles.debugText}>
-                Expected: {PRODUCT_IDS[selectedPlan]}
+                Expected IDs:
               </Text>
-              {products.length > 0 && (
+              <Text style={styles.debugTextSmall}>
+                • {PRODUCT_IDS.yearly}
+              </Text>
+              <Text style={styles.debugTextSmall}>
+                • {PRODUCT_IDS.monthly}
+              </Text>
+              <Text style={styles.debugTextSmall}>
+                • {PRODUCT_IDS.weekly}
+              </Text>
+              <Text style={[styles.debugText, { marginTop: 8, color: products.length > 0 ? '#22c55e' : '#ef4444', fontWeight: 'bold' }]}>
+                Products Returned: {products.length}
+              </Text>
+              {products.length > 0 ? (
                 <View style={{ marginTop: 8 }}>
-                  <Text style={styles.debugTextSmall}>Available Products:</Text>
+                  <Text style={[styles.debugTextSmall, { color: '#22c55e' }]}>✅ Available Products:</Text>
                   {products.map((p, idx) => {
                     const prodId = (p as any).productId || (p as any).id;
                     return (
@@ -664,6 +686,15 @@ export default function SubscriptionScreen() {
                       </Text>
                     );
                   })}
+                </View>
+              ) : (
+                <View style={{ marginTop: 8 }}>
+                  <Text style={[styles.debugTextSmall, { color: '#ef4444' }]}>❌ NO PRODUCTS LOADED!</Text>
+                  <Text style={[styles.debugTextSmall, { color: '#fbbf24', marginTop: 4 }]}>Possible issues:</Text>
+                  <Text style={styles.debugTextSmall}>• Bundle ID mismatch</Text>
+                  <Text style={styles.debugTextSmall}>• Products not approved</Text>
+                  <Text style={styles.debugTextSmall}>• Not signed in with test account</Text>
+                  <Text style={styles.debugTextSmall}>• Subscription order still propagating</Text>
                 </View>
               )}
             </View>
