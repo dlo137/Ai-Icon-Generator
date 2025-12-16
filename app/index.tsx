@@ -59,8 +59,21 @@ export default function WelcomeScreen() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
-        // User is already logged in, redirect to main app
-        router.replace('/(tabs)/generate');
+        // Check if user has completed onboarding by verifying profile exists
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('id, onboarding_completed')
+          .eq('id', session.user.id)
+          .single();
+
+        // Only redirect to generate if user has completed onboarding
+        // Profile exists and onboarding_completed is true (or field doesn't exist for existing users)
+        if (profile && (profile.onboarding_completed !== false)) {
+          router.replace('/(tabs)/generate');
+        } else {
+          // New user with session but no onboarding - let them continue through onboarding
+          setIsCheckingAuth(false);
+        }
       } else {
         setIsCheckingAuth(false);
       }

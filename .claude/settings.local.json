@@ -56,7 +56,8 @@
       "Bash(git rm:*)",
       "Bash(eas credentials:*)",
       "Bash(eas submit:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(del \"C:\\Users\\aidaw\\Desktop\\Code\\IconGenerator\\supabase\\migrations\\20241215000001_add_subscription_columns.sql\")"
     ],
     "deny": [],
     "ask": []

@@ -561,9 +561,8 @@ serve(async (req: Request) => {
     const effectiveBaseImage = effectiveBaseImageUrl || blankFrameUrl;
     const isUsingBlankFrame = !effectiveBaseImageUrl && !!blankFrameUrl;
 
-    // Generate 3 images with different seeds for variety
+    // Generate 3 images
     console.log('🎨 Generating 3 variations...');
-    const variations = [];
 
     // Get user ID from auth for namespacing
     console.log('👤 Getting user ID...');
@@ -571,42 +570,46 @@ serve(async (req: Request) => {
     const userId = user?.id || 'anonymous';
     console.log('👤 User ID:', userId);
 
-    for (let i = 0; i < 3; i++) {
-      console.log(`\n🎨 Generating variation ${i + 1}/3...`);
+    const SEVEN_DAYS = 7 * 24 * 60 * 60; // 7 days in seconds
+    const variations = [];
+
+    // Generate 3 variations with different seeds
+    for (let i = 1; i <= 3; i++) {
+      console.log(`\n🎨 Generating variation ${i}/3...`);
       const randomSeed = Math.floor(Math.random() * 1000000);
+
       const generateWithRetry = () =>
         retryWithBackoff(() =>
           callGeminiImagePreview(finalPrompt, subjectImageUrl, referenceImageUrls, effectiveBaseImage, isUsingBlankFrame, randomSeed)
         );
 
       const rawImageBytes = await generateWithRetry();
-      console.log(`📏 Variation ${i + 1} raw size:`, rawImageBytes.length, 'bytes');
+      console.log(`📏 Raw image size:`, rawImageBytes.length, 'bytes');
 
       // Resize image to exactly 1024x1024
       const imageBytes = await resizeImageTo1024x1024(rawImageBytes);
 
       // Store image to Supabase Storage with user-specific path
       const filename = `${userId}/${crypto.randomUUID()}.png`;
-      console.log(`💾 Uploading variation ${i + 1} to storage:`, filename);
+      console.log(`💾 Uploading to storage:`, filename);
 
       const upload = await supabase.storage.from("thumbnails").upload(filename, imageBytes, { contentType: "image/png", upsert: true });
 
       if (upload.error) {
-        console.error(`❌ Storage upload error for variation ${i + 1}:`, upload.error);
+        console.error(`❌ Storage upload error:`, upload.error);
         throw upload.error;
       }
-      console.log(`✅ Variation ${i + 1} upload successful!`);
+      console.log(`✅ Upload successful!`);
 
       // Generate long-lived signed URL (7 days)
-      const SEVEN_DAYS = 7 * 24 * 60 * 60; // 7 days in seconds
-      console.log(`🔗 Creating signed URL for variation ${i + 1}...`);
+      console.log(`🔗 Creating signed URL...`);
       const signed = await supabase.storage.from("thumbnails").createSignedUrl(filename, SEVEN_DAYS);
 
       if (signed.error) {
-        console.error(`❌ Signed URL error for variation ${i + 1}:`, signed.error);
+        console.error(`❌ Signed URL error:`, signed.error);
         throw signed.error;
       }
-      console.log(`✅ Variation ${i + 1} signed URL created`);
+      console.log(`✅ Signed URL created for variation ${i}`);
 
       variations.push({
         imageUrl: signed.data?.signedUrl,
@@ -617,13 +620,13 @@ serve(async (req: Request) => {
       });
     }
 
-    console.log('📤 Sending response with 3 variations to client...');
+    console.log('📤 Sending response to client with 3 variations...');
     return new Response(JSON.stringify({
       variation1: variations[0],
       variation2: variations[1],
       variation3: variations[2],
       imageUrl: variations[0].imageUrl, // Backwards compatibility
-      url: variations[0].imageUrl, // Backwards compatibility
+      url: variations[0].url, // Backwards compatibility
       width: WIDTH,
       height: HEIGHT,
       file: variations[0].file,

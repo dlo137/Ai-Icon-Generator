@@ -3,9 +3,10 @@ import { Stack, useRouter } from 'expo-router';
 import { useEffect } from 'react';
 import { Alert, Linking, LogBox } from 'react-native';
 
-// Suppress media library warning for Expo Go
+// Suppress media library warning and NitroModules error for Expo Go
 LogBox.ignoreLogs([
   'Due to changes in Androids permission requirements',
+  'NitroModules are not supported in Expo Go',
 ]);
 
 function RootLayoutNav() {
@@ -57,6 +58,13 @@ function RootLayoutNav() {
     const errorHandler = (error: Error, isFatal?: boolean) => {
       console.error('Global error:', error);
       console.error('Error stack:', error.stack);
+
+      // Ignore NitroModules errors in Expo Go (doesn't affect production)
+      if (error.message?.includes('NitroModules are not supported in Expo Go')) {
+        console.warn('NitroModules error suppressed (Expo Go only)');
+        return;
+      }
+
       if (isFatal) {
         Alert.alert(
           'Unexpected Error',

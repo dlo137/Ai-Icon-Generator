@@ -4,6 +4,9 @@ import { useRouter } from 'expo-router';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
 import IAPService from '../services/IAPService';
+import { completeOnboarding } from '../src/features/auth/api';
+import Constants from 'expo-constants';
+import { supabase } from '../lib/supabase';
 
 // Platform-specific product IDs
 const PRODUCT_IDS = Platform.OS === 'ios' ? {
@@ -45,6 +48,9 @@ export default function SubscriptionScreen() {
   // Check if IAP is available
   const isIAPAvailable = IAPService.isAvailable();
 
+  // Check if running in Expo Go
+  const isExpoGo = Constants.appOwnership === 'expo';
+
   // Stable callback for IAP events
   const handleIAPCallback = useCallback((info: any) => {
     console.log('[SUBSCRIPTION] IAP Debug:', info);
@@ -61,6 +67,11 @@ export default function SubscriptionScreen() {
     if (info.listenerStatus?.includes('SUCCESS') || info.listenerStatus?.includes('Navigating')) {
       console.log('[SUBSCRIPTION] Purchase successful! Navigating to generate screen...');
       setCurrentPurchaseAttempt(null);
+
+      // Mark onboarding as complete
+      completeOnboarding().catch(err => {
+        console.error('[SUBSCRIPTION] Error completing onboarding:', err);
+      });
 
       // Use router ref to ensure we have the latest router instance
       const currentRouter = routerRef.current;
@@ -225,6 +236,12 @@ export default function SubscriptionScreen() {
   };
 
   const handleContinue = async () => {
+    // If running in Expo Go, simulate the purchase
+    if (isExpoGo) {
+      await simulatePurchaseInExpoGo();
+      return;
+    }
+
     if (!isIAPAvailable) {
       Alert.alert('Purchases unavailable', 'In-app purchases are not available on this device.');
       return;
@@ -249,6 +266,132 @@ export default function SubscriptionScreen() {
     setCurrentPurchaseAttempt(selectedPlan);
     const productId = (product as any).productId || (product as any).id;
     await handlePurchase(productId);
+  };
+
+  const simulatePurchaseInExpoGo = async () => {
+    try {
+      setCurrentPurchaseAttempt(selectedPlan);
+      console.log('[EXPO GO] Simulating purchase for plan:', selectedPlan);
+
+      // Get current user
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
+        throw new Error('User not authenticated');
+      }
+
+      console.log('[EXPO GO] User ID:', user.id);
+      console.log('[EXPO GO] User email:', user.email);
+
+      // Calculate subscription dates and credits based on plan
+      const now = new Date();
+      let credits = 0;
+      let subscriptionEndDate = new Date(now);
+
+      if (selectedPlan === 'weekly') {
+        credits = 10;
+        subscriptionEndDate.setDate(subscriptionEndDate.getDate() + 7);
+      } else if (selectedPlan === 'monthly') {
+        credits = 75;
+        subscriptionEndDate.setMonth(subscriptionEndDate.getMonth() + 1);
+      } else if (selectedPlan === 'yearly') {
+        credits = 90;
+        subscriptionEndDate.setFullYear(subscriptionEndDate.getFullYear() + 1);
+      }
+
+      // Get the product ID for the selected plan
+      const productId = PRODUCT_IDS[selectedPlan];
+
+      // Determine price based on plan
+      let price = 0;
+      if (selectedPlan === 'weekly') price = 2.99;
+      else if (selectedPlan === 'monthly') price = 5.99;
+      else if (selectedPlan === 'yearly') price = 59.99;
+
+      // First check if profile exists
+      const { data: existingProfile, error: checkError } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      console.log('[EXPO GO] Profile exists:', !!existingProfile);
+      console.log('[EXPO GO] Check error:', checkError);
+
+      // If no profile exists, create one first
+      if (!existingProfile) {
+        console.log('[EXPO GO] Creating new profile...');
+        const { error: insertError } = await supabase
+          .from('profiles')
+          .insert({
+            id: user.id,
+            email: user.email,
+            name: user.user_metadata?.full_name || user.email?.split('@')[0],
+          });
+
+        if (insertError) {
+          console.error('[EXPO GO] Error creating profile:', insertError);
+          throw insertError;
+        }
+        console.log('[EXPO GO] Profile created successfully');
+      }
+
+      // Update profile with subscription data
+      console.log('[EXPO GO] Updating profile with subscription data...');
+      const updateData = {
+        subscription_plan: selectedPlan,
+        subscription_status: 'active',
+        subscription_start_date: now.toISOString(),
+        subscription_end_date: subscriptionEndDate.toISOString(),
+        credits_current: credits,
+        credits_max: credits,
+        product_id: productId,
+        email: user.email,
+        purchase_time: now.toISOString(),
+        price: price,
+        is_pro_version: true,
+        last_credit_reset: now.toISOString(),
+      };
+
+      console.log('[EXPO GO] Update data:', updateData);
+
+      const { data: updateResult, error: updateError } = await supabase
+        .from('profiles')
+        .update(updateData)
+        .eq('id', user.id)
+        .select();
+
+      console.log('[EXPO GO] Update result:', updateResult);
+      console.log('[EXPO GO] Update error:', updateError);
+
+      if (updateError) {
+        console.error('[EXPO GO] Full update error:', JSON.stringify(updateError));
+        throw updateError;
+      }
+
+      console.log('[EXPO GO] Simulated purchase successful!');
+
+      // Mark onboarding as complete
+      await completeOnboarding();
+
+      // Show success message
+      Alert.alert(
+        'Success (Expo Go Simulation)',
+        `${selectedPlan.charAt(0).toUpperCase() + selectedPlan.slice(1)} plan activated with ${credits} credits!\n\nNote: This is a simulated purchase for testing in Expo Go.`,
+        [
+          {
+            text: 'Continue',
+            onPress: () => {
+              setCurrentPurchaseAttempt(null);
+              router.replace('/(tabs)/generate');
+            }
+          }
+        ]
+      );
+    } catch (error: any) {
+      console.error('[EXPO GO] Simulated purchase error:', error);
+      setCurrentPurchaseAttempt(null);
+      Alert.alert('Error', error.message || 'Failed to simulate purchase');
+    }
   };
 
   const handlePurchase = async (productId: string) => {
@@ -302,6 +445,9 @@ export default function SubscriptionScreen() {
       console.log('[SUBSCRIPTION] Attempting to restore purchases...');
       const results = await IAPService.restorePurchases();
       if (results.length > 0) {
+        // Mark onboarding as complete
+        await completeOnboarding();
+
         Alert.alert('Success', 'Your purchases have been restored!', [
           { text: 'Continue', onPress: () => router.replace('/(tabs)/generate') }
         ]);
@@ -325,7 +471,14 @@ export default function SubscriptionScreen() {
     return fallbackPrice;
   };
 
-  const handleClose = () => {
+  const handleClose = async () => {
+    // Mark onboarding as complete when user closes without purchasing
+    try {
+      await completeOnboarding();
+    } catch (err) {
+      console.error('[SUBSCRIPTION] Error completing onboarding:', err);
+    }
+
     router.replace('/(tabs)/generate');
   };
 
@@ -335,6 +488,13 @@ export default function SubscriptionScreen() {
       style={styles.container}
     >
       <StatusBar style="light" />
+
+      {/* Expo Go Banner */}
+      {isExpoGo && (
+        <View style={styles.expoGoBanner}>
+          <Text style={styles.expoGoBannerText}>🧪 Expo Go - Purchases will be simulated</Text>
+        </View>
+      )}
 
       {/* Close Button */}
       <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
@@ -440,9 +600,9 @@ export default function SubscriptionScreen() {
       {/* Continue Button - Fixed at Bottom */}
       <View style={styles.buttonContainer}>
         <TouchableOpacity
-          style={[styles.continueButton, (!iapReady || loadingProducts || currentPurchaseAttempt) && { opacity: 0.6 }]}
+          style={[styles.continueButton, (isExpoGo ? !!currentPurchaseAttempt : (!iapReady || loadingProducts || currentPurchaseAttempt)) && { opacity: 0.6 }]}
           onPress={handleContinue}
-          disabled={!iapReady || loadingProducts || !!currentPurchaseAttempt}
+          disabled={isExpoGo ? !!currentPurchaseAttempt : (!iapReady || loadingProducts || !!currentPurchaseAttempt)}
         >
           <LinearGradient
             colors={['#1e40af', '#1e3a8a']}
@@ -451,13 +611,16 @@ export default function SubscriptionScreen() {
             style={styles.continueGradient}
           >
             <Text style={styles.continueText}>
-              {!iapReady ? 'Connecting...' : loadingProducts ? 'Loading...' : currentPurchaseAttempt ? 'Processing...' : 'Get Started'}
+              {isExpoGo
+                ? (currentPurchaseAttempt ? 'Simulating...' : 'Get Started (Simulated)')
+                : (!iapReady ? 'Connecting...' : loadingProducts ? 'Loading...' : currentPurchaseAttempt ? 'Processing...' : 'Get Started')
+              }
             </Text>
           </LinearGradient>
         </TouchableOpacity>
 
-        {/* Retry Connection Button - Show when not ready */}
-        {!iapReady && !loadingProducts && (
+        {/* Retry Connection Button - Show when not ready (not in Expo Go) */}
+        {!isExpoGo && !iapReady && !loadingProducts && (
           <TouchableOpacity
             style={styles.retryButton}
             onPress={initializeIAP}
@@ -468,7 +631,7 @@ export default function SubscriptionScreen() {
       </View>
 
       {/* Debug Panel */}
-      {showDebug && (
+      {/* {showDebug && (
         <View style={styles.debugPanel}>
           <View style={styles.debugHeader}>
             <Text style={styles.debugTitle}>🔧 IAP Debug Monitor</Text>
@@ -597,17 +760,17 @@ export default function SubscriptionScreen() {
             </TouchableOpacity>
           </ScrollView>
         </View>
-      )}
+      )} */}
 
       {/* Show Debug Button when panel is hidden */}
-      {!showDebug && (
+      {/* {!showDebug && (
         <TouchableOpacity
           style={styles.showDebugButton}
           onPress={() => setShowDebug(true)}
         >
           <Text style={styles.showDebugText}>🔧</Text>
         </TouchableOpacity>
-      )}
+      )} */}
     </LinearGradient>
   );
 }
@@ -618,6 +781,22 @@ const MUTED = '#a0a8b8';
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  expoGoBanner: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#f59e0b',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    zIndex: 100,
+    alignItems: 'center',
+  },
+  expoGoBannerText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#000000',
   },
   closeButton: {
     position: 'absolute',

@@ -101,6 +101,10 @@ export default function GenerateScreen() {
   const [generatedImageUrl2, setGeneratedImageUrl2] = useState('');
   const [generatedImageUrl3, setGeneratedImageUrl3] = useState('');
   const [isModalVisible, setIsModalVisible] = useState(false);
+  const [customTitle, setCustomTitle] = useState<string | null>(null);
+  const [financeLastUsed, setFinanceLastUsed] = useState<number[]>([]);
+  const [fitnessLastUsed, setFitnessLastUsed] = useState<number[]>([]);
+  const [photoLastUsed, setPhotoLastUsed] = useState<number[]>([]);
   const [modalPrompt, setModalPrompt] = useState('');
   const [modalImageUrl, setModalImageUrl] = useState('');
   const [originalModalImageUrl, setOriginalModalImageUrl] = useState(''); // Track original remote URL for syncing
@@ -160,6 +164,7 @@ export default function GenerateScreen() {
     url2?: string;
     url3?: string;
     timestamp: number;
+    customTitle?: string | null;
     textOverlays?: {
       url1?: {
         text: string;
@@ -829,35 +834,152 @@ export default function GenerateScreen() {
     { id: 'colorful', label: 'Colorful' },
   ];
 
-  // Generate randomized preset prompts for variety
+  // Predefined finance icon prompts that cycle through (following finance color psychology)
+  const financeIconPrompts = [
+    // 1. Dollar sign - Dark blue (trust)
+    "Create a stunning modern finance app icon with ONE bold, centered 3D dollar sign ($) with premium metallic finish. Use glassmorphism with subtle depth. Background must be a rich gradient from midnight navy to royal blue with silver highlights, completely filling edge-to-edge with NO borders. Add soft glow. Must look trustworthy like major bank apps.",
+
+    // 2. Line chart - Green (growth)
+    "Create a stunning modern finance app icon with ONE bold, centered upward trending line chart with glowing points. Use clean geometric design. Background must be a rich gradient from deep emerald to bright neon green, completely filling edge-to-edge with NO borders. Add chart glow. Must convey growth and success.",
+
+    // 3. Credit card - Dark blue/white (premium)
+    "Create a stunning modern finance app icon with ONE bold, centered credit card with chip detail. Use minimalist premium design. Background must be a rich gradient from midnight blue to deep navy with white/silver card, completely filling edge-to-edge with NO borders. Add subtle shadows. Must look premium and secure.",
+
+    // 4. Wallet - Black + neon (modern fintech)
+    "Create a stunning modern finance app icon with ONE bold, centered sleek wallet with glowing edge. Use modern minimalist design. Background must be pure black to dark charcoal with bright neon cyan accent, completely filling edge-to-edge with NO borders. Add neon glow. Must look modern fintech.",
+
+    // 5. Bank building - Dark blue (trust)
+    "Create a stunning modern finance app icon with ONE bold, centered geometric bank building with columns. Use clean 3D design. Background must be a rich gradient from royal blue to midnight navy with gold accents, completely filling edge-to-edge with NO borders. Add shadows. Must convey stability.",
+
+    // 6. Columns - Dark blue/gold (institutional)
+    "Create a stunning modern finance app icon with ONE bold, centered pair of classical columns. Use elegant geometric design. Background must be a rich gradient from deep navy to royal blue with gold highlights, completely filling edge-to-edge with NO borders. Add depth. Must look institutional and trustworthy.",
+
+    // 7. Shield - Dark blue/green (security)
+    "Create a stunning modern finance app icon with ONE bold, centered geometric shield with inner glow. Use modern minimalist design. Background must be a rich gradient from midnight blue to deep teal with emerald accents, completely filling edge-to-edge with NO borders. Add protective glow. Must convey security.",
+
+    // 8. Coin stack - Green/gold (wealth)
+    "Create a stunning modern finance app icon with ONE bold, centered stack of glossy coins with reflections. Use 3D metallic design. Background must be a rich gradient from deep forest green to bright emerald with gold highlights, completely filling edge-to-edge with NO borders. Add shine. Must convey wealth.",
+
+    // 9. Piggy bank - Green (savings)
+    "Create a stunning modern finance app icon with ONE bold, centered modern piggy bank with clean lines. Use geometric design with subtle 3D. Background must be a rich gradient from deep teal to bright emerald green, completely filling edge-to-edge with NO borders. Add soft glow. Must look friendly yet premium.",
+
+    // 10. Calculator - Black + neon (modern fintech)
+    "Create a stunning modern finance app icon with ONE bold, centered calculator with glowing display. Use sleek minimalist design. Background must be pure black to dark charcoal with bright neon green display, completely filling edge-to-edge with NO borders. Add glow effects. Must look modern and precise."
+  ];
+
+  // Predefined fitness icon prompts that cycle through (premium design approach)
+  const fitnessIconPrompts = [
+    // 1. Dumbbell — Premium strength (graphite / steel)
+    "Create a premium modern fitness app icon featuring ONE bold, centered dumbbell with brushed steel or graphite finish. Use minimal geometric form with subtle bevels. Background must be a smooth gradient from deep slate blue to dark graphite, edge-to-edge with NO borders. Soft studio lighting, realistic shadows. Clean, professional, high-end fitness branding.",
+
+    // 2. Heart rate / ECG — Health & performance (cool green)
+    "Create a premium modern fitness app icon with ONE centered ECG heart rate line, clean and precise. Thin but confident stroke, balanced peaks. Background must be a refined gradient from deep forest green to muted teal, edge-to-edge with NO borders. Subtle glow only at intersections. Medical-grade, calm, trustworthy.",
+
+    // 3. Running figure — Motion without gimmicks (cool gray)
+    "Create a premium modern fitness app icon with ONE centered abstract running figure using a simplified, aerodynamic silhouette. No motion blur. Background must be a smooth gradient from dark charcoal to cool steel gray, edge-to-edge with NO borders. Matte finish, soft directional lighting. Athletic, controlled, modern.",
+
+    // 4. Stopwatch — Precision training (black + electric blue)
+    "Create a premium modern fitness app icon with ONE centered stopwatch in a minimal digital style. Clean lines, no clutter. Background must be deep black fading into dark navy, edge-to-edge with NO borders. Subtle electric blue accent only on key details. Precise, professional, performance-focused.",
+
+    // 5. Flexed arm — Strength & discipline (monochrome)
+    "Create a premium modern fitness app icon with ONE centered flexed arm symbol, sculpted but minimal. Use smooth geometry, no veins or exaggeration. Background must be a gradient from dark stone gray to near-black, edge-to-edge with NO borders. Soft contrast lighting. Strong, disciplined, premium.",
+
+    // 6. Scale — Health tracking (cool neutral)
+    "Create a premium modern fitness app icon with ONE centered smart scale, ultra-minimal design. Rounded edges, glass-like surface. Background must be a gradient from muted blue-gray to soft graphite, edge-to-edge with NO borders. Gentle reflections. Clean, modern health tech aesthetic.",
+
+    // 7. Flame — Metabolic burn (reimagined, not aggressive)
+    "Create a premium modern fitness app icon with ONE centered abstract flame symbol designed with smooth, minimal curves. No sharp edges, no aggressive glow. Background must be a gradient from deep plum to dark navy, edge-to-edge with NO borders. Soft internal highlights. Controlled intensity, modern fitness.",
+
+    // 8. Footprint — Steps & activity (calm vitality)
+    "Create a premium modern fitness app icon with ONE centered shoe footprint icon using a simplified tread pattern. Flat but dimensional. Background must be a gradient from deep evergreen to dark teal, edge-to-edge with NO borders. Subtle depth and shadow. Clean, active, refined.",
+
+    // 9. Water bottle — Hydration (tech wellness)
+    "Create a premium modern fitness app icon with ONE centered minimalist water bottle icon. Frosted glass or matte finish. Background must be a smooth gradient from cool cyan-blue to muted navy, edge-to-edge with NO borders. Soft reflections, no droplets. Clean, modern wellness tech.",
+
+    // 10. Meditation — Premium recovery (luxury calm)
+    "Create a premium modern fitness app icon with ONE centered meditation figure in lotus pose, ultra-minimal silhouette. Background must be deep charcoal to pure black, edge-to-edge with NO borders. Soft ambient rim light around the figure. Calm, luxurious, high-end coaching brand."
+  ];
+
+  // Predefined photo icon prompts that cycle through (premium creative approach)
+  const photoIconPrompts = [
+    // 1. Camera — Professional photography (charcoal + silver)
+    "Create a premium modern photo app icon with ONE centered professional camera body, minimal geometric form with metallic details. Background must be a smooth gradient from deep charcoal to dark slate gray, edge-to-edge with NO borders. Soft studio lighting, realistic shadows. Clean, professional photography aesthetic.",
+
+    // 2. Lens — Optical precision (deep blue + glass)
+    "Create a premium modern photo app icon with ONE centered camera lens with glass reflections and minimal aperture details. Background must be a refined gradient from deep navy blue to midnight blue, edge-to-edge with NO borders. Subtle lens flare, optical-grade precision. Professional, trustworthy.",
+
+    // 3. Aperture — Technical precision (monochrome)
+    "Create a premium modern photo app icon with ONE centered camera aperture with geometric blade pattern. Background must be a gradient from silver-gray to dark graphite, edge-to-edge with NO borders. Precise mechanical details, soft highlights. Technical, professional, precision photography.",
+
+    // 4. Film strip — Cinematic capture (vintage modern)
+    "Create a premium modern photo app icon with ONE centered film strip segment showing minimal sprocket holes. Background must be a gradient from deep sepia to rich brown, edge-to-edge with NO borders. Soft vintage lighting, modern minimal form. Cinematic, professional storytelling."
+  ];
+
+  // Generate randomized preset prompts avoiding last 2 selections
   const getRandomizedPresetPrompt = (category: 'finance' | 'fitness' | 'photo'): string => {
-    const random = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)];
+    const getRandomAvoidingLast = (arrayLength: number, lastUsed: number[]): number => {
+      // Get available indexes (exclude last 2 used)
+      const availableIndexes = [];
+      for (let i = 0; i < arrayLength; i++) {
+        if (!lastUsed.includes(i)) {
+          availableIndexes.push(i);
+        }
+      }
+      
+      // If we've used too many recently, just avoid the very last one
+      if (availableIndexes.length === 0) {
+        for (let i = 0; i < arrayLength; i++) {
+          if (i !== lastUsed[lastUsed.length - 1]) {
+            availableIndexes.push(i);
+          }
+        }
+      }
+      
+      // Pick random from available
+      return availableIndexes[Math.floor(Math.random() * availableIndexes.length)];
+    };
 
     if (category === 'finance') {
-      const symbols = ['3D dollar sign ($) with metallic shine', 'bold upward trending arrow with glow effect', 'layered credit card stack with depth', 'geometric shield with inner glow', 'glossy coin with reflections', 'abstract currency symbol with shadow', 'modern bank vault icon', 'dynamic stock chart with bright highlights'];
-      const colors = ['emerald green to deep teal with gold accents', 'royal blue to midnight navy with silver highlights', 'rich gold to bronze with warm orange glow', 'neon green to dark forest with bright edges', 'cyan to deep blue with electric highlights', 'purple to deep indigo with gold shimmer'];
-      const effects = ['Add subtle 3D depth, inner shadows, and a soft outer glow', 'Use glassmorphism with frosted glass effect and light reflections', 'Apply dramatic lighting with bright highlights and deep shadows', 'Include geometric patterns in background with layered depth', 'Add metallic sheen with gradient overlays and shine effects', 'Use neumorphism with soft shadows and raised elements'];
-
-      return `Create a stunning, modern finance app icon with ONE bold, centered ${random(symbols)}. ${random(effects)}. Background must be a rich, multi-layered gradient (${random(colors)}) that completely fills the canvas edge-to-edge with NO borders. Use bold, thick lines, high contrast, and premium visual treatment. Icon should look luxurious, trustworthy, and eye-catching like top-tier finance apps (Robinhood, Cash App, Revolut). Must be instantly recognizable at tiny sizes.`;
+      const selectedIndex = getRandomAvoidingLast(financeIconPrompts.length, financeLastUsed);
+      const prompt = financeIconPrompts[selectedIndex];
+      
+      // Update last used (keep only last 2)
+      setFinanceLastUsed(prev => {
+        const updated = [...prev, selectedIndex];
+        return updated.slice(-2); // Keep only last 2
+      });
+      
+      return prompt;
     }
     else if (category === 'fitness') {
-      const symbols = ['sleek 3D dumbbell with chrome finish and soft shadows', 'elegant heart rate pulse wave with smooth curves', 'minimalist geometric flame with gradient layers', 'modern abstract figure in motion with flowing lines', 'refined circular timer with glowing segments', 'stylized lightning bolt with smooth gradients', 'sophisticated hexagonal pattern with centered fitness icon', 'graceful curved swoosh around abstract symbol', 'premium kettlebell silhouette with metallic sheen'];
-      const colors = ['deep coral to vibrant orange with soft pink highlights', 'electric cyan to royal blue with subtle purple undertones', 'sunset gradient from warm peach to deep magenta', 'sophisticated black to emerald green with neon accents', 'modern teal to deep navy with bright cyan edges', 'premium rose gold to deep burgundy with copper shimmer', 'sleek midnight blue to hot pink with electric glow'];
-      const effects = ['Use smooth 3D depth with soft shadows, subtle highlights, and polished surfaces', 'Apply elegant glassmorphism with frosted overlay, light refraction, and depth layers', 'Add sophisticated neon outlines with soft inner glow and gradient fills', 'Include clean geometric patterns with layered circles, sharp lines, and modern spacing', 'Use premium gradient mesh with smooth color transitions and luminous highlights', 'Apply refined neumorphic style with elevated elements and ambient lighting', 'Add dynamic radial gradients emanating from center with smooth feathered edges'];
-
-      return `Create a stunning, premium fitness app icon with ONE bold, centered ${random(symbols)}. ${random(effects)}. Background must be a beautiful, sophisticated gradient (${random(colors)}) that completely fills the canvas edge-to-edge with NO borders. Design should balance energy with elegance—modern, sleek, and motivating like luxury fitness brands (Peloton, Apple Fitness+, Nike Training Club). Use clean lines, smooth curves, and refined visual hierarchy. Icon must feel premium, inspiring, and aesthetically beautiful at any size.`;
+      const selectedIndex = getRandomAvoidingLast(fitnessIconPrompts.length, fitnessLastUsed);
+      const prompt = fitnessIconPrompts[selectedIndex];
+      
+      // Update last used (keep only last 2)
+      setFitnessLastUsed(prev => {
+        const updated = [...prev, selectedIndex];
+        return updated.slice(-2); // Keep only last 2
+      });
+      
+      return prompt;
     }
     else { // photo
-      const symbols = ['stylized camera with lens flare effect', 'circular aperture with rainbow refraction', 'layered film frames with depth', 'modern lens with gradient rings', 'geometric shutter with spinning effect', 'artistic gallery grid with perspective', 'abstract photo mountains with vibrant sky', 'bokeh circles around camera icon', 'prismatic crystal camera shape'];
-      const colors = ['vivid purple to hot pink with coral highlights', 'sunset orange to magenta with yellow accents', 'electric blue to cyan with purple undertones', 'deep indigo to violet with pink shimmer', 'holographic rainbow gradient with multiple hues', 'coral pink to deep purple with gold sparkles'];
-      const effects = ['Add chromatic aberration, lens flare, and light leaks', 'Use iridescent holographic effects with color shifting', 'Apply soft focus blur with sharp center and glowing edges', 'Include bokeh circles, light particles, and dreamy atmosphere', 'Add prismatic color splits and rainbow refractions', 'Use layered depth with foreground elements and atmospheric perspective'];
-
-      return `Create a gorgeous, artistic photo app icon with ONE bold, centered ${random(symbols)}. ${random(effects)}. Background must be a stunning, vibrant gradient (${random(colors)}) that completely fills the canvas edge-to-edge with NO borders. Design should feel creative, modern, and visually captivating like premium photo apps (VSCO, Lightroom, Instagram). Use smooth curves, artistic flair, and rich visual depth. Must be beautiful and memorable at any size.`;
+      const selectedIndex = getRandomAvoidingLast(photoIconPrompts.length, photoLastUsed);
+      const prompt = photoIconPrompts[selectedIndex];
+      
+      // Update last used (keep only last 2)
+      setPhotoLastUsed(prev => {
+        const updated = [...prev, selectedIndex];
+        return updated.slice(-2); // Keep only last 2
+      });
+      
+      return prompt;
     }
   };
 
-  const handleGenerate = async (overrideTopic?: string) => {
+  const handleGenerate = async (overrideTopic?: string, overrideCustomTitle?: string) => {
     const topicToUse = overrideTopic || topic;
+    const customTitleToUse = overrideCustomTitle || customTitle;
 
     if (!topicToUse.trim()) {
       Alert.alert('Error', 'Please enter a description for your icon');
@@ -965,8 +1087,10 @@ export default function GenerateScreen() {
           url2: url2,
           url3: url3,
           timestamp: Date.now(),
+          customTitle: customTitleToUse, // Store custom title if set
         };
         setAllGenerations(prev => [newGeneration, ...prev]);
+        setCustomTitle(null); // Reset custom title after use
 
         // Deduct 3 credits for successful generation (3 images = 3 credits)
         await deductCredit(3);
@@ -1001,8 +1125,10 @@ export default function GenerateScreen() {
           url2: undefined,
           url3: undefined,
           timestamp: Date.now(),
+          customTitle: customTitleToUse, // Store custom title if set
         };
         setAllGenerations(prev => [newGeneration, ...prev]);
+        setCustomTitle(null); // Reset custom title after use
 
         await refreshCredits();
 
@@ -1035,7 +1161,9 @@ export default function GenerateScreen() {
             {/* Loading placeholder at the top when generating */}
             {isLoading && (
               <View style={styles.generationSection}>
-                <Text style={styles.imageTitle}>{lastPrompt ? getShortTitle(lastPrompt) : 'Generating...'}</Text>
+                <Text style={styles.imageTitle}>
+                  {customTitle || (lastPrompt ? getShortTitle(lastPrompt) : 'Generating...')}
+                </Text>
 
                 {/* First loading skeleton */}
                 <View style={styles.loadingThumbnailContainer}>
@@ -1182,7 +1310,9 @@ export default function GenerateScreen() {
             {allGenerations.map((generation, index) => (
               <View key={generation.id} style={styles.generationSection}>
                 {/* Title for each generation */}
-                <Text style={styles.imageTitle}>{getShortTitle(generation.prompt)}</Text>
+                <Text style={styles.imageTitle}>
+                  {generation.customTitle || getShortTitle(generation.prompt)}
+                </Text>
 
                 {/* First Generated Image */}
                 {generation.url1 && (
@@ -1310,21 +1440,30 @@ export default function GenerateScreen() {
         <View style={styles.suggestionContainer}>
           <TouchableOpacity
             style={styles.suggestionButton}
-            onPress={() => handleGenerate(getRandomizedPresetPrompt('finance'))}
+            onPress={() => {
+              setCustomTitle('Modern Finance Icon');
+              handleGenerate(getRandomizedPresetPrompt('finance'), 'Modern Finance Icon');
+            }}
             activeOpacity={0.7}
           >
             <Text style={styles.suggestionText} numberOfLines={1}>Finance</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.suggestionButton}
-            onPress={() => handleGenerate(getRandomizedPresetPrompt('fitness'))}
+            onPress={() => {
+              setCustomTitle('Modern Fitness Icon');
+              handleGenerate(getRandomizedPresetPrompt('fitness'), 'Modern Fitness Icon');
+            }}
             activeOpacity={0.7}
           >
             <Text style={styles.suggestionText} numberOfLines={1}>Fitness</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.suggestionButton}
-            onPress={() => handleGenerate(getRandomizedPresetPrompt('photo'))}
+            onPress={() => {
+              setCustomTitle('Modern Photo Icon');
+              handleGenerate(getRandomizedPresetPrompt('photo'), 'Modern Photo Icon');
+            }}
             activeOpacity={0.7}
           >
             <Text style={styles.suggestionText} numberOfLines={1}>Photo</Text>

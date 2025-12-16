@@ -106,7 +106,7 @@ export default function LoginScreen() {
       <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <Text style={styles.title}>Welcome Back</Text>
-          <Text style={styles.subtitle}>Sign in to continue creating amazing thumbnails</Text>
+          <Text style={styles.subtitle}>Sign in to continue creating amazing icons</Text>
         </View>
 
         <View style={styles.form}>
@@ -154,12 +154,6 @@ export default function LoginScreen() {
               {isLoading ? 'Signing In...' : 'Sign In'}
             </Text>
           </TouchableOpacity>
-
-          <View style={styles.forgotPasswordContainer}>
-            <TouchableOpacity onPress={() => router.push('/forgot-password')}>
-              <Text style={styles.forgotPasswordLink}>Forgot Password?</Text>
-            </TouchableOpacity>
-          </View>
 
           <View style={styles.dividerContainer}>
             <View style={styles.dividerLine} />
@@ -320,15 +314,6 @@ const styles = StyleSheet.create({
   loginButtonText: {
     color: '#ffffff',
     fontSize: 18,
-    fontWeight: '600',
-  },
-  forgotPasswordContainer: {
-    alignItems: 'center',
-    marginTop: 24,
-  },
-  forgotPasswordLink: {
-    fontSize: 16,
-    color: '#93c5fd',
     fontWeight: '600',
   },
   backButton: {

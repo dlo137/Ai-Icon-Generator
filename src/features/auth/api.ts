@@ -17,11 +17,14 @@ export async function signUpEmail(email: string, password: string, fullName?: st
   });
   if (error) throw error;
 
-  // Update profile table with the name if user was created
+  // Update profile table with the name and mark onboarding started if user was created
   if (data.user && fullName) {
     const { error: profileError } = await supabase
       .from('profiles')
-      .update({ name: fullName })
+      .update({
+        name: fullName,
+        onboarding_completed: false  // Mark as not completed yet - will be set to true when they finish subscription screen
+      })
       .eq('id', data.user.id);
 
     if (profileError) {
@@ -204,19 +207,41 @@ export async function signInWithApple() {
 
     if (error) throw error;
 
-    // Update profile with full name if provided by Apple
-    if (data.user && fullName) {
-      const fullNameString = [
-        fullName.givenName,
-        fullName.familyName,
-      ]
-        .filter(Boolean)
-        .join(' ');
+    // Check if this is a new user and update profile
+    if (data.user) {
+      // Check if profile exists
+      const { data: existingProfile } = await supabase
+        .from('profiles')
+        .select('id, onboarding_completed')
+        .eq('id', data.user.id)
+        .single();
 
-      if (fullNameString) {
+      const updates: any = {};
+
+      // If new user with full name from Apple, add it
+      if (fullName) {
+        const fullNameString = [
+          fullName.givenName,
+          fullName.familyName,
+        ]
+          .filter(Boolean)
+          .join(' ');
+
+        if (fullNameString) {
+          updates.name = fullNameString;
+        }
+      }
+
+      // If new user (no existing profile or no onboarding_completed field), mark onboarding as not complete
+      if (!existingProfile || existingProfile.onboarding_completed === null || existingProfile.onboarding_completed === undefined) {
+        updates.onboarding_completed = false;
+      }
+
+      // Update profile if there are updates
+      if (Object.keys(updates).length > 0) {
         await supabase
           .from('profiles')
-          .update({ name: fullNameString })
+          .update(updates)
           .eq('id', data.user.id);
       }
     }
@@ -385,5 +410,45 @@ export async function signInWithGoogle() {
     }
 
     throw new Error(`Google sign-in failed: ${error?.message || 'Unknown error'}. Please try again or contact support.`);
+  }
+}
+
+/**
+ * Helper function to check and set onboarding status for new users
+ */
+async function checkAndSetOnboardingStatus(userId: string) {
+  const { data: existingProfile } = await supabase
+    .from('profiles')
+    .select('id, onboarding_completed')
+    .eq('id', userId)
+    .single();
+
+  // If new user (no existing profile or no onboarding_completed field), mark onboarding as not complete
+  if (!existingProfile || existingProfile.onboarding_completed === null || existingProfile.onboarding_completed === undefined) {
+    await supabase
+      .from('profiles')
+      .update({ onboarding_completed: false })
+      .eq('id', userId);
+  }
+}
+
+/**
+ * Mark onboarding as complete for the current user
+ */
+export async function completeOnboarding() {
+  const { data: { user }, error } = await supabase.auth.getUser();
+
+  if (error || !user) {
+    throw new Error('User not authenticated');
+  }
+
+  const { error: updateError } = await supabase
+    .from('profiles')
+    .update({ onboarding_completed: true })
+    .eq('id', user.id);
+
+  if (updateError) {
+    console.error('Error completing onboarding:', updateError);
+    throw updateError;
   }
 }
