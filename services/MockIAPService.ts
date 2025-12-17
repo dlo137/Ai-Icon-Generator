@@ -3,6 +3,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
+import type { IIAPService } from './IIAPService';
 
 // Mock product type that matches react-native-iap structure
 interface MockProduct {
@@ -27,7 +28,7 @@ const ANDROID_PRODUCT_IDS = [
   'ai.icon.pro:weekly'
 ];
 
-class MockIAPService {
+class MockIAPService implements IIAPService {
   private static instance: MockIAPService;
   private isConnected: boolean = false;
   private hasListener: boolean = false;

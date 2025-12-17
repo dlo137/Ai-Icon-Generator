@@ -1,12 +1,10 @@
 // RealIAPService.ts - Real IAP implementation using react-native-iap
-// This file uses runtime require() to avoid loading NitroModules in Expo Go
+// CRITICAL: react-native-iap is loaded ONLY inside initialize() to prevent Expo Go crashes
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import { supabase } from '../lib/supabase';
-
-// Use runtime require() instead of static import to avoid loading in Expo Go
-const RNIap = require('react-native-iap');
+import type { IIAPService } from './IIAPService';
 
 // Import types separately (these don't cause runtime issues)
 import type {
@@ -30,8 +28,13 @@ const ANDROID_PRODUCT_IDS = [
 
 const INFLIGHT_KEY = 'iapPurchaseInFlight';
 
-class RealIAPService {
+class RealIAPService implements IIAPService {
   private static instance: RealIAPService;
+
+  // CRITICAL: RNIap is loaded INSIDE initialize(), not at file scope
+  // This prevents Metro from resolving NitroModules in Expo Go
+  private RNIap: any = null;
+
   private isConnected: boolean = false;
   private hasListener: boolean = false;
   private processedIds: Set<string> = new Set();
@@ -53,13 +56,21 @@ class RealIAPService {
 
   async initialize(): Promise<boolean> {
     try {
+      // CRITICAL FIX: Load react-native-iap HERE, not at file scope
+      // This prevents NitroModules from loading in Expo Go
+      if (!this.RNIap) {
+        console.log('[IAP-SERVICE] 🔌 Loading react-native-iap module...');
+        this.RNIap = require('react-native-iap');
+        console.log('[IAP-SERVICE] ✅ react-native-iap loaded successfully');
+      }
+
       console.log('[IAP-SERVICE] 🚀 Initializing react-native-iap...');
       console.log('[IAP-SERVICE] 📱 Platform:', Platform.OS);
       console.log('[IAP-SERVICE] 📦 RNIap version:', require('react-native-iap/package.json').version);
 
       if (!this.isConnected) {
         console.log('[IAP-SERVICE] 🔌 Attempting to connect to App Store...');
-        const result = await RNIap.initConnection();
+        const result = await this.RNIap.initConnection();
         console.log('[IAP-SERVICE] ✅ Connection established:', result);
         this.isConnected = true;
       } else {
@@ -103,7 +114,7 @@ class RealIAPService {
 
   private setupPurchaseListeners() {
     // Purchase update listener
-    this.purchaseUpdateSubscription = RNIap.purchaseUpdatedListener(
+    this.purchaseUpdateSubscription = this.RNIap.purchaseUpdatedListener(
       async (purchase: Purchase) => {
         console.log('[IAP-SERVICE] 🎉 Purchase updated:', purchase);
         this.lastPurchaseResult = purchase;
@@ -120,7 +131,7 @@ class RealIAPService {
     );
 
     // Purchase error listener
-    this.purchaseErrorSubscription = RNIap.purchaseErrorListener(
+    this.purchaseErrorSubscription = this.RNIap.purchaseErrorListener(
       (error: PurchaseError) => {
         console.error('[IAP-SERVICE] Purchase error:', error);
 
@@ -177,7 +188,7 @@ class RealIAPService {
   private async checkForPendingPurchases() {
     try {
       console.log('[IAP-SERVICE] Checking for pending purchases...');
-      const purchases = await RNIap.getAvailablePurchases();
+      const purchases = await this.RNIap.getAvailablePurchases();
 
       if (purchases && purchases.length > 0) {
         console.log(`[IAP-SERVICE] Found ${purchases.length} pending purchases`);
@@ -295,10 +306,10 @@ class RealIAPService {
       console.log('[IAP-SERVICE] Finishing transaction...');
       if (Platform.OS === 'android') {
         // On Android, acknowledge the purchase
-        await RNIap.acknowledgePurchaseAndroid(purchase.purchaseToken!);
+        await this.RNIap.acknowledgePurchaseAndroid(purchase.purchaseToken!);
       } else {
         // On iOS, finish the transaction
-        await RNIap.finishTransaction({ purchase, isConsumable: false });
+        await this.RNIap.finishTransaction({ purchase, isConsumable: false });
       }
 
       // Navigate and clear flag for deliberate purchases
@@ -336,13 +347,13 @@ class RealIAPService {
       // Try getSubscriptions first (for auto-renewable subscriptions)
       // Use array signature (not object) for iOS compatibility
       console.log('[IAP-SERVICE] Trying getSubscriptions()...');
-      let products = await (RNIap as any).getSubscriptions(productIds);
+      let products = await this.RNIap.getSubscriptions(productIds);
       console.log('[IAP-SERVICE] getSubscriptions() returned:', products.length, 'products');
 
       // If no products found, try getProducts as fallback (for non-renewing subscriptions, consumables, etc.)
       if (products.length === 0) {
         console.log('[IAP-SERVICE] ⚠️ No subscriptions found, trying getProducts() fallback...');
-        products = await (RNIap as any).getProducts(productIds);
+        products = await this.RNIap.getProducts(productIds);
         console.log('[IAP-SERVICE] getProducts() returned:', products.length, 'products');
       }
 
@@ -409,9 +420,14 @@ class RealIAPService {
       console.log('[IAP-SERVICE] Requesting purchase...');
 
       if (Platform.OS === 'android') {
-        await (RNIap as any).requestSubscription({ sku: productId });
+        // Android: Use basic subscription request
+        await this.RNIap.requestSubscription({ sku: productId });
       } else {
-        await (RNIap as any).requestSubscription({ sku: productId });
+        // iOS: CRITICAL - Add StoreKit 2 flag for react-native-iap v14+
+        await this.RNIap.requestSubscription({
+          sku: productId,
+          andDangerouslyFinishTransactionAutomaticallyIOS: false
+        });
       }
 
       if (this.debugCallback) {
@@ -458,7 +474,7 @@ class RealIAPService {
       await AsyncStorage.setItem(INFLIGHT_KEY, 'true');
       console.log('[IAP-SERVICE] Restoring purchases...');
 
-      const purchases = await RNIap.getAvailablePurchases();
+      const purchases = await this.RNIap.getAvailablePurchases();
 
       if (!purchases || purchases.length === 0) {
         await AsyncStorage.setItem(INFLIGHT_KEY, 'false');
@@ -518,8 +534,8 @@ class RealIAPService {
       this.purchaseErrorSubscription = null;
     }
 
-    if (this.isConnected) {
-      await RNIap.endConnection();
+    if (this.isConnected && this.RNIap) {
+      await this.RNIap.endConnection();
       this.isConnected = false;
     }
 
