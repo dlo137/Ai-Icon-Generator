@@ -1,7 +1,7 @@
 // IAPService.ts - Production-ready IAP service for react-native-iap v14+
 // Supports iOS StoreKit 2 and Android Google Play Billing
 
-import { Platform } from 'react-native';
+import { Platform, Alert } from 'react-native';
 import Constants from 'expo-constants';
 import * as RNIap from 'react-native-iap';
 import { updateSubscriptionInProfile } from '../src/features/subscription/api';
@@ -89,8 +89,23 @@ class IAPService {
 
           // Update Supabase profile with subscription data (non-blocking)
           console.log('[IAP] Updating Supabase profile...');
-          const purchaseId = purchase.transactionId || purchase.purchaseToken || productId;
+          console.log('[IAP] Purchase object:', JSON.stringify(purchase, null, 2));
+
+          // Generate unique subscription ID
+          let purchaseId = purchase.transactionId || purchase.purchaseToken;
+
+          if (!purchaseId) {
+            // Generate unique ID if purchase doesn't provide one
+            const timestamp = Date.now();
+            const random = Math.random().toString(36).substring(2, 15);
+            purchaseId = `${productId}_${timestamp}_${random}`;
+            console.log('[IAP] Generated subscription ID:', purchaseId);
+          } else {
+            console.log('[IAP] Using purchase ID from store:', purchaseId);
+          }
+
           const purchaseTime = purchase.transactionDate || new Date().toISOString();
+          console.log('[IAP] Purchase time:', purchaseTime);
 
           // Try to update Supabase, but don't let it block the success flow
           updateSubscriptionInProfile(productId, purchaseId, purchaseTime)
@@ -99,7 +114,12 @@ class IAPService {
             })
             .catch((error) => {
               console.error('[IAP] ⚠️ Supabase update failed (non-blocking):', error);
-              // Don't block the purchase success - user paid and transaction was finished
+              // Show error to user for debugging (temporary)
+              Alert.alert(
+                'Database Update Failed',
+                `Purchase successful but profile update failed:\n\n${error?.message || 'Unknown error'}\n\nPlease check the console logs for details.`,
+                [{ text: 'OK' }]
+              );
             });
 
           // Update last purchase result

@@ -134,7 +134,7 @@ export default function WelcomeScreen() {
       <View style={styles.container}>
         <StatusBar style="light" />
         <View style={[styles.content, { justifyContent: 'center' }]}>
-          <ActivityIndicator size="large" color="#6366f1" />
+          <ActivityIndicator size="large" color="#22d3ee" />
         </View>
       </View>
     );

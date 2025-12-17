@@ -49,19 +49,45 @@ export async function updateSubscriptionInProfile(
   purchaseId: string,
   purchaseTime?: string
 ): Promise<void> {
+  console.log('[SUBSCRIPTION API] ========== START UPDATE ==========');
+  console.log('[SUBSCRIPTION API] Product ID:', productId);
+  console.log('[SUBSCRIPTION API] Purchase ID:', purchaseId);
+  console.log('[SUBSCRIPTION API] Purchase Time:', purchaseTime);
+
   try {
     // Get current user
+    console.log('[SUBSCRIPTION API] Getting current user...');
     const { data: { user }, error: userError } = await supabase.auth.getUser();
 
-    if (userError || !user) {
-      throw new Error('User not authenticated');
+    if (userError) {
+      console.error('[SUBSCRIPTION API] ❌ User error:', userError);
+      throw new Error(`User authentication error: ${userError.message}`);
+    }
+
+    if (!user) {
+      console.error('[SUBSCRIPTION API] ❌ No user found');
+      throw new Error('User not authenticated - no user object');
+    }
+
+    console.log('[SUBSCRIPTION API] ✅ User authenticated:', user.id);
+    console.log('[SUBSCRIPTION API] User email:', user.email);
+
+    // Ensure subscription_id is never null/undefined
+    let subscriptionId = purchaseId;
+    if (!subscriptionId) {
+      const timestamp = Date.now();
+      const random = Math.random().toString(36).substring(2, 15);
+      subscriptionId = `${productId}_${timestamp}_${random}`;
+      console.log('[SUBSCRIPTION API] ⚠️ Purchase ID was null, generated unique ID:', subscriptionId);
     }
 
     // Determine plan type from product ID
     const plan = getPlanFromProductId(productId);
+    console.log('[SUBSCRIPTION API] Detected plan:', plan);
 
     // Get price for the plan
     const price = getPriceForPlan(plan);
+    console.log('[SUBSCRIPTION API] Plan price:', price);
 
     // Check if it's a trial (only yearly has trial)
     const isTrial = plan === 'yearly';
@@ -73,6 +99,7 @@ export async function updateSubscriptionInProfile(
       case 'monthly': credits_max = 75; break;
       case 'weekly': credits_max = 10; break;
     }
+    console.log('[SUBSCRIPTION API] Credits:', credits_max);
 
     // Calculate subscription end date based on plan
     const now = new Date();
@@ -87,14 +114,23 @@ export async function updateSubscriptionInProfile(
     }
 
     // Get user's name/email for the name field
+    // Try multiple sources for Google OAuth and other providers
     const userName = user?.user_metadata?.full_name ||
+                    user?.user_metadata?.name ||
+                    user?.user_metadata?.display_name ||
+                    user?.identities?.[0]?.identity_data?.full_name ||
+                    user?.identities?.[0]?.identity_data?.name ||
                     user?.email?.split('@')[0] ||
                     'User';
+
+    console.log('[SUBSCRIPTION API] Extracted user name:', userName);
+    console.log('[SUBSCRIPTION API] User metadata:', JSON.stringify(user?.user_metadata, null, 2));
+    console.log('[SUBSCRIPTION API] User identities:', JSON.stringify(user?.identities, null, 2));
 
     // Prepare subscription data with all necessary fields
     const subscriptionData = {
       subscription_plan: plan,
-      subscription_id: purchaseId,
+      subscription_id: subscriptionId,
       price: price,
       purchase_time: startDate,
       is_pro_version: true, // Always true for any paid plan
@@ -110,7 +146,10 @@ export async function updateSubscriptionInProfile(
       email: user?.email || null,
     };
 
+    console.log('[SUBSCRIPTION API] Prepared subscription data:', JSON.stringify(subscriptionData, null, 2));
+
     // Check if profile exists
+    console.log('[SUBSCRIPTION API] Checking if profile exists...');
     const { data: existingProfile, error: checkError } = await supabase
       .from('profiles')
       .select('id')
@@ -118,44 +157,67 @@ export async function updateSubscriptionInProfile(
       .maybeSingle();
 
     if (checkError && checkError.code !== 'PGRST116') {
-      console.error('Error checking profile:', checkError);
+      console.error('[SUBSCRIPTION API] ❌ Error checking profile:', JSON.stringify(checkError, null, 2));
       throw checkError;
     }
 
+    console.log('[SUBSCRIPTION API] Profile exists:', !!existingProfile);
+
     if (!existingProfile) {
       // Profile doesn't exist, create it first
-      console.log('[SUBSCRIPTION] Creating new profile for user:', user.id);
-      const { error: insertError } = await supabase
+      console.log('[SUBSCRIPTION API] Creating new profile for user:', user.id);
+      const insertData = {
+        id: user.id,
+        email: user.email,
+        name: userName,
+        ...subscriptionData
+      };
+      console.log('[SUBSCRIPTION API] Insert data:', JSON.stringify(insertData, null, 2));
+
+      const { data: insertResult, error: insertError } = await supabase
         .from('profiles')
-        .insert({
-          id: user.id,
-          email: user.email,
-          name: userName,
-          ...subscriptionData
-        });
+        .insert(insertData)
+        .select();
 
       if (insertError) {
-        console.error('Error creating profile:', insertError);
-        throw insertError;
+        console.error('[SUBSCRIPTION API] ❌ Insert error:', JSON.stringify(insertError, null, 2));
+        console.error('[SUBSCRIPTION API] ❌ Error code:', insertError.code);
+        console.error('[SUBSCRIPTION API] ❌ Error message:', insertError.message);
+        console.error('[SUBSCRIPTION API] ❌ Error details:', insertError.details);
+        console.error('[SUBSCRIPTION API] ❌ Error hint:', insertError.hint);
+        throw new Error(`Failed to create profile: ${insertError.message} (${insertError.code})`);
       }
-      console.log('[SUBSCRIPTION] Profile created successfully');
+      console.log('[SUBSCRIPTION API] ✅ Profile created successfully:', insertResult);
     } else {
       // Profile exists, update it
-      const { error: updateError } = await supabase
+      console.log('[SUBSCRIPTION API] Updating existing profile...');
+      console.log('[SUBSCRIPTION API] Update data:', JSON.stringify(subscriptionData, null, 2));
+
+      const { data: updateResult, error: updateError } = await supabase
         .from('profiles')
         .update(subscriptionData)
-        .eq('id', user.id);
+        .eq('id', user.id)
+        .select();
 
       if (updateError) {
-        console.error('Error updating subscription in profile:', updateError);
-        throw updateError;
+        console.error('[SUBSCRIPTION API] ❌ Update error:', JSON.stringify(updateError, null, 2));
+        console.error('[SUBSCRIPTION API] ❌ Error code:', updateError.code);
+        console.error('[SUBSCRIPTION API] ❌ Error message:', updateError.message);
+        console.error('[SUBSCRIPTION API] ❌ Error details:', updateError.details);
+        console.error('[SUBSCRIPTION API] ❌ Error hint:', updateError.hint);
+        throw new Error(`Failed to update profile: ${updateError.message} (${updateError.code})`);
       }
-      console.log('[SUBSCRIPTION] Profile updated successfully');
+      console.log('[SUBSCRIPTION API] ✅ Profile updated successfully:', updateResult);
     }
 
-    console.log('Successfully updated subscription in profile:', subscriptionData);
-  } catch (error) {
-    console.error('Failed to update subscription:', error);
+    console.log('[SUBSCRIPTION API] ========== UPDATE COMPLETE ==========');
+  } catch (error: any) {
+    console.error('[SUBSCRIPTION API] ❌❌❌ FATAL ERROR ❌❌❌');
+    console.error('[SUBSCRIPTION API] Error type:', typeof error);
+    console.error('[SUBSCRIPTION API] Error message:', error?.message || 'Unknown error');
+    console.error('[SUBSCRIPTION API] Error stack:', error?.stack);
+    console.error('[SUBSCRIPTION API] Full error:', JSON.stringify(error, null, 2));
+    console.error('[SUBSCRIPTION API] ========================================');
     throw error;
   }
 }

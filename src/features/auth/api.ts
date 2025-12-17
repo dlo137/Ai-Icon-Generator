@@ -327,6 +327,12 @@ export async function signInWithGoogle() {
 
         if (sessionData?.session) {
           console.log(`[Google Auth] ✓ Session found after ${(i + 1) * 500}ms!`);
+
+          // Update profile with Google user data
+          if (sessionData?.session?.user) {
+            await updateProfileAfterGoogleSignIn(sessionData.session.user);
+          }
+
           return sessionData;
         }
 
@@ -359,6 +365,12 @@ export async function signInWithGoogle() {
 
         if (sessionData?.session) {
           console.log(`[Google Auth] ✓ Session found after ${(i + 1) * 500}ms!`);
+
+          // Update profile with Google user data
+          if (sessionData?.session?.user) {
+            await updateProfileAfterGoogleSignIn(sessionData.session.user);
+          }
+
           return sessionData;
         }
 
@@ -390,6 +402,12 @@ export async function signInWithGoogle() {
         }
 
         console.log('[Google Auth] Session created!');
+
+        // Update profile with Google user data
+        if (sessionData?.user) {
+          await updateProfileAfterGoogleSignIn(sessionData.user);
+        }
+
         return sessionData;
       }
 
@@ -414,6 +432,12 @@ export async function signInWithGoogle() {
         }
 
         console.log('[Google Auth] Session created!');
+
+        // Update profile with Google user data
+        if (sessionData?.user) {
+          await updateProfileAfterGoogleSignIn(sessionData.user);
+        }
+
         return sessionData;
       }
 
@@ -435,6 +459,72 @@ export async function signInWithGoogle() {
     }
 
     throw new Error(`Google sign-in failed: ${error?.message || 'Unknown error'}. Please try again or contact support.`);
+  }
+}
+
+/**
+ * Update profile after Google sign-in with user data from OAuth
+ */
+async function updateProfileAfterGoogleSignIn(user: any) {
+  try {
+    console.log('[Google Auth] Updating profile for user:', user.id);
+
+    // Check if profile exists
+    const { data: existingProfile } = await supabase
+      .from('profiles')
+      .select('id, onboarding_completed, email, name')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    const updates: any = {};
+
+    // Save email from Google
+    if (user.email && (!existingProfile?.email || existingProfile.email !== user.email)) {
+      updates.email = user.email;
+      console.log('[Google Auth] Saving email to profile:', user.email);
+    }
+
+    // Extract name from Google OAuth data
+    if (!existingProfile?.name) {
+      // Try to get name from multiple sources
+      const userName =
+        user.user_metadata?.full_name ||
+        user.user_metadata?.name ||
+        user.user_metadata?.display_name ||
+        user.identities?.[0]?.identity_data?.full_name ||
+        user.identities?.[0]?.identity_data?.name ||
+        (user.email ? user.email.split('@')[0] : 'User');
+
+      updates.name = userName;
+      console.log('[Google Auth] Saving name to profile:', userName);
+      console.log('[Google Auth] User metadata:', JSON.stringify(user.user_metadata, null, 2));
+      console.log('[Google Auth] User identities:', JSON.stringify(user.identities, null, 2));
+    }
+
+    // If new user, mark onboarding as not complete
+    if (!existingProfile || existingProfile.onboarding_completed === null || existingProfile.onboarding_completed === undefined) {
+      updates.onboarding_completed = false;
+    }
+
+    // Update profile if there are updates
+    if (Object.keys(updates).length > 0) {
+      console.log('[Google Auth] Updating profile with:', updates);
+      const { error } = await supabase
+        .from('profiles')
+        .update(updates)
+        .eq('id', user.id);
+
+      if (error) {
+        console.error('[Google Auth] Error updating profile:', error);
+      } else {
+        console.log('[Google Auth] Profile updated successfully');
+      }
+    } else {
+      console.log('[Google Auth] No profile updates needed');
+    }
+  } catch (error) {
+    console.error('[Google Auth] Error in updateProfileAfterGoogleSignIn:', error);
+    // Don't throw - profile update shouldn't block sign-in
   }
 }
 
