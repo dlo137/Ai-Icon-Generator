@@ -173,7 +173,7 @@ export default function SubscriptionScreen() {
       const results = await IAPService.getProducts();
       if (results?.length) {
         setProducts(results);
-        console.log('[SUBSCRIPTION] Products loaded:', results.map(p => `${(p as any).productId}: ${p.price}`).join(', '));
+        console.log('[SUBSCRIPTION] Products loaded:', results.map((p: any) => `${(p as any).productId}: ${p.price}`).join(', '));
         return results;
       } else {
         setProducts([]);
@@ -209,7 +209,7 @@ export default function SubscriptionScreen() {
 
     const list = products.length ? products : await fetchProducts(true);
     const planId = PRODUCT_IDS[selectedPlan];
-    const product = list.find(p => (p as any).productId === planId);
+    const product = list.find((p: any) => (p as any).productId === planId);
 
     if (!product) {
       Alert.alert(

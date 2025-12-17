@@ -8,23 +8,9 @@ import type { IIAPService } from './IIAPService';
 
 // Import types separately (these don't cause runtime issues)
 import type {
-  Product,
   Purchase,
   PurchaseError,
 } from 'react-native-iap';
-
-// Platform-specific product IDs
-const IOS_PRODUCT_IDS = [
-  'icon.yearly',
-  'icon.monthly',
-  'icon.weekly'
-];
-
-const ANDROID_PRODUCT_IDS = [
-  'ai.icon.pro:yearly',
-  'ai.icon.pro:monthly',
-  'ai.icon.pro:weekly'
-];
 
 const INFLIGHT_KEY = 'iapPurchaseInFlight';
 
@@ -335,61 +321,22 @@ class RealIAPService implements IIAPService {
     }
   }
 
-  async getProducts(): Promise<Product[]> {
-    if (!this.isConnected) {
-      await this.initialize();
+  async getProducts(): Promise<any[]> {
+    if (!this.RNIap) {
+      throw new Error('IAP not initialized');
     }
 
-    try {
-      const productIds = Platform.OS === 'ios' ? IOS_PRODUCT_IDS : ANDROID_PRODUCT_IDS;
-      console.log('[IAP-SERVICE] 🔍 Fetching products for', Platform.OS, ':', productIds);
+    const skus = Platform.OS === 'ios'
+      ? ['icon.weekly', 'icon.monthly', 'icon.yearly']
+      : ['ai.icon.pro:weekly', 'ai.icon.pro:monthly', 'ai.icon.pro:yearly'];
 
-      // Try getSubscriptions first (for auto-renewable subscriptions)
-      // Use array signature (not object) for iOS compatibility
-      console.log('[IAP-SERVICE] Trying getSubscriptions()...');
-      let products = await this.RNIap.getSubscriptions(productIds);
-      console.log('[IAP-SERVICE] getSubscriptions() returned:', products.length, 'products');
+    console.log('[IAP] Fetching subscriptions:', skus);
 
-      // If no products found, try getProducts as fallback (for non-renewing subscriptions, consumables, etc.)
-      if (products.length === 0) {
-        console.log('[IAP-SERVICE] ⚠️ No subscriptions found, trying getProducts() fallback...');
-        products = await this.RNIap.getProducts(productIds);
-        console.log('[IAP-SERVICE] getProducts() returned:', products.length, 'products');
-      }
+    const products = await this.RNIap.getSubscriptions({ skus });
 
-      // Log what Apple actually returned
-      console.log('[IAP-SERVICE] 📦 Total products loaded:', products.length);
-      console.log('[IAP-SERVICE] Returned product IDs:', products.map((p: any) => p.productId || p.id));
+    console.log('[IAP] Subscriptions returned:', products.length);
 
-      // Log each product for debugging
-      if (products.length > 0) {
-        products.forEach((p: any) => {
-          console.log('[IAP-SERVICE] ✅ Product:', {
-            productId: p.productId || p.id,
-            title: p.title,
-            price: p.price,
-            currency: p.currency,
-            type: p.type
-          });
-        });
-      } else {
-        console.error('[IAP-SERVICE] ❌ ZERO products returned from App Store!');
-        console.error('[IAP-SERVICE] Expected product IDs:', productIds);
-        console.error('[IAP-SERVICE] Troubleshooting:');
-        console.error('[IAP-SERVICE]   1. Verify products exist in App Store Connect with exact IDs above');
-        console.error('[IAP-SERVICE]   2. Ensure products are "Ready to Submit" or "Approved"');
-        console.error('[IAP-SERVICE]   3. Check bundle ID matches App Store Connect');
-        console.error('[IAP-SERVICE]   4. Verify products are added to subscription group');
-        console.error('[IAP-SERVICE]   5. Sign out of App Store on device and sign in with test account');
-      }
-
-      return products;
-    } catch (err) {
-      console.error('[IAP-SERVICE] ❌ Error fetching products:', err);
-      console.error('[IAP-SERVICE] Error message:', (err as any)?.message || 'Unknown error');
-      console.error('[IAP-SERVICE] Full error details:', JSON.stringify(err, null, 2));
-      return [];
-    }
+    return products;
   }
 
   async purchaseProduct(productId: string): Promise<void> {
