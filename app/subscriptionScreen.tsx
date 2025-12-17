@@ -28,6 +28,7 @@ export default function SubscriptionScreen() {
   const [iapReady, setIapReady] = useState(false);
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [currentPurchaseAttempt, setCurrentPurchaseAttempt] = useState<'monthly' | 'yearly' | 'weekly' | null>(null);
+  const hasProcessedOrphansRef = useRef<boolean>(false);
 
   // Keep router ref updated
   useEffect(() => {
@@ -138,8 +139,11 @@ export default function SubscriptionScreen() {
         // Set up debug callback using the stable callback
         IAPService.setDebugCallback(handleIAPCallback);
 
-        // Note: Pending purchases are automatically checked during initialize()
-        // No need for separate orphaned transaction check
+        // Check for orphaned transactions on startup
+        if (!hasProcessedOrphansRef.current) {
+          hasProcessedOrphansRef.current = true;
+          await IAPService.checkForOrphanedTransactions();
+        }
 
         // Fetch products
         await fetchProducts();
@@ -169,7 +173,7 @@ export default function SubscriptionScreen() {
       const results = await IAPService.getProducts();
       if (results?.length) {
         setProducts(results);
-        console.log('[SUBSCRIPTION] Products loaded:', results.map((p: any) => `${(p as any).productId}: ${p.price}`).join(', '));
+        console.log('[SUBSCRIPTION] Products loaded:', results.map(p => `${p.productId}: ${p.price}`).join(', '));
         return results;
       } else {
         setProducts([]);
@@ -205,7 +209,7 @@ export default function SubscriptionScreen() {
 
     const list = products.length ? products : await fetchProducts(true);
     const planId = PRODUCT_IDS[selectedPlan];
-    const product = list.find((p: any) => (p as any).productId === planId);
+    const product = list.find(p => p.productId === planId);
 
     if (!product) {
       Alert.alert(
@@ -217,7 +221,7 @@ export default function SubscriptionScreen() {
 
     // Set the current purchase attempt BEFORE starting the purchase
     setCurrentPurchaseAttempt(selectedPlan);
-    await handlePurchase((product as any).productId);
+    await handlePurchase(product.productId);
   };
 
   const simulatePurchaseInExpoGo = async () => {
@@ -731,9 +735,11 @@ export default function SubscriptionScreen() {
               style={styles.debugButton}
               onPress={() => {
                 const status = IAPService.getConnectionStatus();
+                const lastResult = IAPService.getLastPurchaseResult();
                 setDebugInfo((prev: any) => ({
                   ...prev,
                   connectionStatus: status,
+                  lastPurchaseResult: lastResult,
                   timestamp: new Date().toISOString(),
                   manualCheck: true
                 }));

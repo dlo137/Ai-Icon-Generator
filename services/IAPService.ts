@@ -4,6 +4,7 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import * as RNIap from 'react-native-iap';
+import { updateSubscriptionInProfile } from '../src/features/subscription/api';
 
 // Product IDs - must match App Store Connect / Google Play Console exactly
 const SUBSCRIPTION_SKUS = Platform.OS === 'ios'
@@ -19,6 +20,8 @@ class IAPService {
   private purchaseUpdateListener: any = null;
   private purchaseErrorListener: any = null;
   private debugCallback: ((info: any) => void) | null = null;
+  private processedIds: Set<string> = new Set();
+  private lastPurchaseResult: any = null;
 
   private constructor() {}
 
@@ -70,21 +73,52 @@ class IAPService {
     // Listen for successful purchases
     this.purchaseUpdateListener = RNIap.purchaseUpdatedListener(
       async (purchase: any) => {
-        console.log('[IAP] Purchase updated:', purchase.productId || purchase.productIds?.[0]);
+        const productId = purchase.productId || purchase.productIds?.[0];
+        console.log('[IAP] Purchase updated:', productId);
+
+        if (this.debugCallback) {
+          this.debugCallback({
+            lastPurchase: purchase,
+            listenerStatus: 'PURCHASE RECEIVED ✅'
+          });
+        }
 
         try {
           // Verify and finish the purchase
           await this.finishPurchase(purchase);
 
+          // Update Supabase profile with subscription data
+          console.log('[IAP] Updating Supabase profile...');
+          const purchaseId = purchase.transactionId || purchase.purchaseToken || productId;
+          const purchaseTime = purchase.transactionDate || new Date().toISOString();
+
+          await updateSubscriptionInProfile(productId, purchaseId, purchaseTime);
+          console.log('[IAP] ✅ Supabase profile updated');
+
+          // Update last purchase result
+          this.lastPurchaseResult = {
+            success: true,
+            productId,
+            timestamp: new Date().toISOString()
+          };
+
           // Notify success
           if (this.debugCallback) {
             this.debugCallback({
-              status: 'success',
-              productId: purchase.productId || purchase.productIds?.[0],
+              listenerStatus: 'PURCHASE SUCCESS! ✅',
+              shouldNavigate: true,
+              purchaseComplete: true,
+              productId
             });
           }
         } catch (error) {
           console.error('[IAP] Error processing purchase:', error);
+
+          if (this.debugCallback) {
+            this.debugCallback({
+              listenerStatus: 'PURCHASE FAILED ❌'
+            });
+          }
         }
       }
     );
@@ -96,10 +130,15 @@ class IAPService {
 
         if (this.debugCallback) {
           this.debugCallback({
-            status: 'error',
-            error: error.message,
+            listenerStatus: `PURCHASE ERROR ❌: ${error.message}`
           });
         }
+
+        this.lastPurchaseResult = {
+          success: false,
+          error: error.message,
+          timestamp: new Date().toISOString()
+        };
       }
     );
 
@@ -117,12 +156,25 @@ class IAPService {
         console.log('[IAP] Found', purchases.length, 'pending purchases');
 
         for (const purchase of purchases) {
-          await this.finishPurchase(purchase);
+          const txId = purchase.transactionId;
+          if (txId && !this.processedIds.has(txId)) {
+            const productId = (purchase as any).productId || (purchase as any).productIds?.[0];
+            console.log('[IAP] Processing pending purchase:', productId);
+            this.processedIds.add(txId);
+            await this.finishPurchase(purchase);
+          }
         }
       }
     } catch (error) {
       console.error('[IAP] Error checking pending purchases:', error);
     }
+  }
+
+  /**
+   * Check for orphaned transactions (alias for checkPendingPurchases)
+   */
+  async checkForOrphanedTransactions(): Promise<void> {
+    return this.checkPendingPurchases();
   }
 
   /**
@@ -149,6 +201,7 @@ class IAPService {
   /**
    * Get available subscription products
    * Returns products from App Store Connect / Google Play Console
+   * Normalizes v14 products to have 'productId' property for compatibility
    */
   async getProducts(): Promise<any[]> {
     if (isExpoGo) {
@@ -177,13 +230,20 @@ class IAPService {
         return [];
       }
 
-      console.log('[IAP] ✅ Products loaded:', products.length);
+      // Normalize products: v14 uses 'id', but we add 'productId' for compatibility
+      const normalizedProducts = products.map((p: any) => ({
+        ...p,
+        productId: p.id || p.productId, // Ensure productId exists
+        price: p.displayPrice || p.price // Normalize price
+      }));
 
-      products.forEach((p: any) => {
-        console.log('[IAP]   -', p.id, ':', p.displayPrice);
+      console.log('[IAP] ✅ Products loaded:', normalizedProducts.length);
+
+      normalizedProducts.forEach((p: any) => {
+        console.log('[IAP]   -', p.productId, ':', p.price);
       });
 
-      return products;
+      return normalizedProducts;
     } catch (error) {
       console.error('[IAP] Error fetching products:', error);
       throw error;
@@ -199,13 +259,22 @@ class IAPService {
       console.log('[IAP] Expo Go - simulating purchase');
       await new Promise(resolve => setTimeout(resolve, 1000));
       if (this.debugCallback) {
-        this.debugCallback({ status: 'success', productId });
+        this.debugCallback({
+          listenerStatus: 'PURCHASE SUCCESS! ✅',
+          productId
+        });
       }
       return;
     }
 
     try {
       console.log('[IAP] Purchasing:', productId);
+
+      if (this.debugCallback) {
+        this.debugCallback({
+          listenerStatus: 'PURCHASE INITIATED - WAITING... ⏳'
+        });
+      }
 
       // v14+ API: requestPurchase with type: 'subs' and platform-specific request
       // Purchases are handled by listeners (event-based, not promise-based)
@@ -233,9 +302,16 @@ class IAPService {
     } catch (error: any) {
       console.error('[IAP] Purchase failed:', error);
 
+      if (this.debugCallback) {
+        this.debugCallback({
+          listenerStatus: 'PURCHASE FAILED ❌'
+        });
+      }
+
       // User cancelled
-      if (error.code === 'E_USER_CANCELLED') {
-        throw new Error('Purchase cancelled');
+      if (error.code === 'E_USER_CANCELLED' || error?.message?.includes('cancel')) {
+        console.log('[IAP] User cancelled purchase');
+        throw new Error('User cancelled purchase');
       }
 
       throw error;
@@ -286,6 +362,13 @@ class IAPService {
   }
 
   /**
+   * Get last purchase result (for debugging)
+   */
+  getLastPurchaseResult(): any {
+    return this.lastPurchaseResult;
+  }
+
+  /**
    * Get connection status
    */
   getConnectionStatus(): { isConnected: boolean; hasListener: boolean } {
@@ -324,26 +407,32 @@ class IAPService {
     return [
       {
         productId: 'ai.icons.weekly',
+        id: 'ai.icons.weekly',
         title: 'Weekly Plan (Mock)',
         description: 'Mock weekly subscription',
         price: '$2.99',
         localizedPrice: '$2.99',
+        displayPrice: '$2.99',
         currency: 'USD',
       },
       {
         productId: 'ai.icons.monthly',
+        id: 'ai.icons.monthly',
         title: 'Monthly Plan (Mock)',
         description: 'Mock monthly subscription',
         price: '$5.99',
         localizedPrice: '$5.99',
+        displayPrice: '$5.99',
         currency: 'USD',
       },
       {
         productId: 'ai.icons.yearly',
+        id: 'ai.icons.yearly',
         title: 'Yearly Plan (Mock)',
         description: 'Mock yearly subscription',
         price: '$59.99',
         localizedPrice: '$59.99',
+        displayPrice: '$59.99',
         currency: 'USD',
       },
     ];
