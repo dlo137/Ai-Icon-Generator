@@ -8,7 +8,7 @@ import { completeOnboarding } from '../src/features/auth/api';
 import Constants from 'expo-constants';
 import { supabase } from '../lib/supabase';
 
-// Platform-specific product IDs
+// Platform-specific product IDs.
 const PRODUCT_IDS = Platform.OS === 'ios' ? {
   yearly: 'icon.yearly',
   monthly: 'icon.monthly',
