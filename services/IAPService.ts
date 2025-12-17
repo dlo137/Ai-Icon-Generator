@@ -104,8 +104,21 @@ class IAPService {
             console.log('[IAP] Using purchase ID from store:', purchaseId);
           }
 
-          const purchaseTime = purchase.transactionDate || new Date().toISOString();
-          console.log('[IAP] Purchase time:', purchaseTime);
+          // Convert purchase time to ISO string (transactionDate may be a timestamp in ms)
+          let purchaseTime: string;
+          if (purchase.transactionDate) {
+            // If it's a number (timestamp in ms), convert to ISO string
+            if (typeof purchase.transactionDate === 'number') {
+              purchaseTime = new Date(purchase.transactionDate).toISOString();
+              console.log('[IAP] Converted timestamp to ISO:', purchase.transactionDate, '->', purchaseTime);
+            } else {
+              purchaseTime = purchase.transactionDate;
+              console.log('[IAP] Using transaction date as-is:', purchaseTime);
+            }
+          } else {
+            purchaseTime = new Date().toISOString();
+            console.log('[IAP] No transaction date, using current time:', purchaseTime);
+          }
 
           // Try to update Supabase, but don't let it block the success flow
           updateSubscriptionInProfile(productId, purchaseId, purchaseTime)
