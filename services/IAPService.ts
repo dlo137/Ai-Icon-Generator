@@ -87,13 +87,20 @@ class IAPService {
           // Verify and finish the purchase
           await this.finishPurchase(purchase);
 
-          // Update Supabase profile with subscription data
+          // Update Supabase profile with subscription data (non-blocking)
           console.log('[IAP] Updating Supabase profile...');
           const purchaseId = purchase.transactionId || purchase.purchaseToken || productId;
           const purchaseTime = purchase.transactionDate || new Date().toISOString();
 
-          await updateSubscriptionInProfile(productId, purchaseId, purchaseTime);
-          console.log('[IAP] ✅ Supabase profile updated');
+          // Try to update Supabase, but don't let it block the success flow
+          updateSubscriptionInProfile(productId, purchaseId, purchaseTime)
+            .then(() => {
+              console.log('[IAP] ✅ Supabase profile updated successfully');
+            })
+            .catch((error) => {
+              console.error('[IAP] ⚠️ Supabase update failed (non-blocking):', error);
+              // Don't block the purchase success - user paid and transaction was finished
+            });
 
           // Update last purchase result
           this.lastPurchaseResult = {
@@ -102,7 +109,7 @@ class IAPService {
             timestamp: new Date().toISOString()
           };
 
-          // Notify success
+          // Notify success immediately (don't wait for Supabase)
           if (this.debugCallback) {
             this.debugCallback({
               listenerStatus: 'PURCHASE SUCCESS! ✅',

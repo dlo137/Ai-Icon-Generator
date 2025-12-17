@@ -110,15 +110,47 @@ export async function updateSubscriptionInProfile(
       email: user?.email || null,
     };
 
-    // Update the profile in Supabase
-    const { error: updateError } = await supabase
+    // Check if profile exists
+    const { data: existingProfile, error: checkError } = await supabase
       .from('profiles')
-      .update(subscriptionData)
-      .eq('id', user.id);
+      .select('id')
+      .eq('id', user.id)
+      .maybeSingle();
 
-    if (updateError) {
-      console.error('Error updating subscription in profile:', updateError);
-      throw updateError;
+    if (checkError && checkError.code !== 'PGRST116') {
+      console.error('Error checking profile:', checkError);
+      throw checkError;
+    }
+
+    if (!existingProfile) {
+      // Profile doesn't exist, create it first
+      console.log('[SUBSCRIPTION] Creating new profile for user:', user.id);
+      const { error: insertError } = await supabase
+        .from('profiles')
+        .insert({
+          id: user.id,
+          email: user.email,
+          name: userName,
+          ...subscriptionData
+        });
+
+      if (insertError) {
+        console.error('Error creating profile:', insertError);
+        throw insertError;
+      }
+      console.log('[SUBSCRIPTION] Profile created successfully');
+    } else {
+      // Profile exists, update it
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update(subscriptionData)
+        .eq('id', user.id);
+
+      if (updateError) {
+        console.error('Error updating subscription in profile:', updateError);
+        throw updateError;
+      }
+      console.log('[SUBSCRIPTION] Profile updated successfully');
     }
 
     console.log('Successfully updated subscription in profile:', subscriptionData);
