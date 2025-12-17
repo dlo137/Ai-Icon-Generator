@@ -35,10 +35,35 @@ function calculateTrialEndDate(): string {
 
 // Determine plan from product ID
 function getPlanFromProductId(productId: string): SubscriptionPlan {
-  if (productId.includes('yearly')) return 'yearly';
-  if (productId.includes('monthly')) return 'monthly';
-  if (productId.includes('weekly')) return 'weekly';
-  return 'weekly'; // default
+  console.log('[PLAN DETECTION] ========================================');
+  console.log('[PLAN DETECTION] Input productId:', productId);
+  console.log('[PLAN DETECTION] Input type:', typeof productId);
+
+  // Ensure we have a string and make it lowercase for case-insensitive matching
+  const normalizedId = String(productId || '').toLowerCase();
+  console.log('[PLAN DETECTION] Normalized ID:', normalizedId);
+
+  let plan: SubscriptionPlan;
+
+  // Check for plan type in order (most specific first)
+  if (normalizedId.includes('yearly') || normalizedId.includes('year')) {
+    plan = 'yearly';
+    console.log('[PLAN DETECTION] ✓ Matched: yearly');
+  } else if (normalizedId.includes('monthly') || normalizedId.includes('month')) {
+    plan = 'monthly';
+    console.log('[PLAN DETECTION] ✓ Matched: monthly');
+  } else if (normalizedId.includes('weekly') || normalizedId.includes('week')) {
+    plan = 'weekly';
+    console.log('[PLAN DETECTION] ✓ Matched: weekly');
+  } else {
+    // Default to weekly if no match
+    plan = 'weekly';
+    console.log('[PLAN DETECTION] ⚠️ No match found, defaulting to: weekly');
+  }
+
+  console.log('[PLAN DETECTION] Final detected plan:', plan);
+  console.log('[PLAN DETECTION] ========================================');
+  return plan;
 }
 
 /**

@@ -73,8 +73,40 @@ class IAPService {
     // Listen for successful purchases
     this.purchaseUpdateListener = RNIap.purchaseUpdatedListener(
       async (purchase: any) => {
-        const productId = purchase.productId || purchase.productIds?.[0];
-        console.log('[IAP] Purchase updated:', productId);
+        // Extract product ID - v14 uses different structures for iOS/Android
+        let productId: string | undefined;
+
+        // Try all possible locations (order matters)
+        if (purchase.productId && typeof purchase.productId === 'string') {
+          productId = purchase.productId;
+        } else if (purchase.id && typeof purchase.id === 'string') {
+          productId = purchase.id;
+        } else if (purchase.product && typeof purchase.product === 'string') {
+          productId = purchase.product;
+        } else if (Array.isArray(purchase.productIds) && purchase.productIds.length > 0) {
+          productId = purchase.productIds[0];
+        } else if (purchase.products && Array.isArray(purchase.products) && purchase.products.length > 0) {
+          productId = purchase.products[0];
+        }
+
+        console.log('[IAP] ========== PURCHASE RECEIVED ==========');
+        console.log('[IAP] Product ID extracted:', productId);
+        console.log('[IAP] Full purchase object:', JSON.stringify(purchase, null, 2));
+
+        if (!productId) {
+          console.error('[IAP] ❌ Could not extract product ID from purchase!');
+          throw new Error('Unable to determine product ID from purchase');
+        }
+
+        // Validate product ID format
+        const validProductIds = ['ai.icons.weekly', 'ai.icons.monthly', 'ai.icons.yearly'];
+        if (!validProductIds.includes(productId)) {
+          console.warn('[IAP] ⚠️ Product ID not in expected format:', productId);
+          console.warn('[IAP] ⚠️ Expected one of:', validProductIds);
+          // Continue anyway, but log the warning
+        } else {
+          console.log('[IAP] ✓ Product ID validated:', productId);
+        }
 
         if (this.debugCallback) {
           this.debugCallback({
@@ -89,7 +121,6 @@ class IAPService {
 
           // Update Supabase profile with subscription data (non-blocking)
           console.log('[IAP] Updating Supabase profile...');
-          console.log('[IAP] Purchase object:', JSON.stringify(purchase, null, 2));
 
           // Generate unique subscription ID
           let purchaseId = purchase.transactionId || purchase.purchaseToken;
@@ -121,6 +152,10 @@ class IAPService {
           }
 
           // Try to update Supabase, but don't let it block the success flow
+          console.log('[IAP] Calling updateSubscriptionInProfile with:');
+          console.log('[IAP]   - productId:', productId);
+          console.log('[IAP]   - purchaseId:', purchaseId);
+          console.log('[IAP]   - purchaseTime:', purchaseTime);
           updateSubscriptionInProfile(productId, purchaseId, purchaseTime)
             .then(() => {
               console.log('[IAP] ✅ Supabase profile updated successfully');
