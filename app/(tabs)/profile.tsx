@@ -58,15 +58,15 @@ export default function ProfileScreen() {
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [currentPurchaseAttempt, setCurrentPurchaseAttempt] = useState<'monthly' | 'yearly' | 'weekly' | null>(null);
 
-  // Platform-specific product IDs (must match subscriptionScreen.tsx)
+  // Platform-specific product IDs - must match App Store Connect / Google Play Console
   const PRODUCT_IDS = Platform.OS === 'ios' ? {
-    yearly: 'icon.yearly',
-    monthly: 'icon.monthly',
-    weekly: 'icon.weekly',
+    yearly: 'ai.icons.yearly',
+    monthly: 'ai.icons.monthly',
+    weekly: 'ai.icons.weekly',
   } : {
-    yearly: 'ai.icon.pro:yearly',
-    monthly: 'ai.icon.pro:monthly',
-    weekly: 'ai.icon.pro:weekly',
+    yearly: 'ai.icons.yearly',
+    monthly: 'ai.icons.monthly',
+    weekly: 'ai.icons.weekly',
   };
 
   const isIAPAvailable = IAPService.isAvailable();
@@ -191,6 +191,30 @@ export default function ProfileScreen() {
     }, [])
   );
 
+  // IAP callback handler for purchase events
+  const handleIAPCallback = useCallback((info: any) => {
+    console.log('[PROFILE] IAP Callback:', info);
+
+    // Handle successful purchase
+    if (info.listenerStatus?.includes('SUCCESS')) {
+      console.log('[PROFILE] Purchase successful! Reloading user data...');
+      setCurrentPurchaseAttempt(null);
+      setIsBillingModalVisible(false);
+
+      // Reload user data after successful purchase
+      setTimeout(async () => {
+        await loadUserData();
+        Alert.alert('Success!', 'Your subscription has been activated. Thank you for subscribing!');
+      }, 1000);
+    }
+
+    // Handle purchase errors/cancellations
+    if (info.listenerStatus?.includes('CANCELLED') || info.listenerStatus?.includes('FAILED')) {
+      console.log('[PROFILE] Purchase cancelled or failed');
+      setCurrentPurchaseAttempt(null);
+    }
+  }, []);
+
   const initializeIAP = async () => {
     if (!isIAPAvailable) {
       console.log('[PROFILE] IAP not available on this platform');
@@ -205,6 +229,13 @@ export default function ProfileScreen() {
       setIapReady(initialized);
 
       if (initialized) {
+        // Set up IAP callback
+        IAPService.setDebugCallback(handleIAPCallback);
+
+        // Check for orphaned transactions
+        await IAPService.checkForOrphanedTransactions();
+
+        // Fetch products
         await fetchProducts();
       } else {
         // If initialization failed, still set ready to true to unblock the button
@@ -233,23 +264,12 @@ export default function ProfileScreen() {
 
       if (results?.length) {
         setProducts(results);
-        console.log('[PROFILE] ✅ Products loaded successfully:');
-        results.forEach(p => {
-          console.log('[PROFILE]   - Product:', {
-            productId: (p as any).productId || (p as any).id,
-            title: p.title,
-            price: p.price,
-            currency: (p as any).currency
-          });
-        });
+        console.log('[PROFILE] ✅ Products loaded:', results.map(p => `${p.productId}: ${p.price}`).join(', '));
         return results;
       } else {
         setProducts([]);
-        const expectedIds = Platform.OS === 'ios'
-          ? ['icon.yearly', 'icon.monthly', 'icon.weekly']
-          : ['ai.icon.pro:yearly', 'ai.icon.pro:monthly', 'ai.icon.pro:weekly'];
         console.warn('[PROFILE] ⚠️ No products returned from App Store!');
-        console.warn('[PROFILE] Expected product IDs:', expectedIds);
+        console.warn('[PROFILE] Expected product IDs:', ['ai.icons.yearly', 'ai.icons.monthly', 'ai.icons.weekly']);
         console.warn('[PROFILE] Make sure products are created in App Store Connect and approved for testing');
 
         if (showErrors) {
@@ -703,27 +723,15 @@ export default function ProfileScreen() {
                   console.log('[PROFILE-UPGRADE] Fetching products...');
                   const list = await fetchProducts(true);
                   const productId = PRODUCT_IDS[planId as keyof typeof PRODUCT_IDS];
-
-                  console.log('[PROFILE-UPGRADE] Looking for product:', productId);
-                  console.log('[PROFILE-UPGRADE] Available products:', list.length);
-                  console.log('[PROFILE-UPGRADE] Product details:', list.map(p => ({
-                    productId: (p as any).productId,
-                    id: (p as any).id,
-                    title: p.title
-                  })));
-
-                  const product = list.find(p => (p as any).productId === productId || (p as any).id === productId);
+                  const product = list.find(p => p.productId === productId);
 
                   if (!product) {
-                    console.log('[PROFILE-UPGRADE] ❌ Product not found!');
                     Alert.alert('Plan not available', 'We couldn\'t find that plan. Please try again.');
                     return;
                   }
 
-                  console.log('[PROFILE-UPGRADE] ✅ Product found:', (product as any).productId || (product as any).id);
-
                   setCurrentPurchaseAttempt(planId as 'monthly' | 'yearly' | 'weekly');
-                  await handlePurchase((product as any).productId || (product as any).id);
+                  await handlePurchase(product.productId);
                 }
               }
             ]
@@ -830,23 +838,12 @@ export default function ProfileScreen() {
           return;
         }
 
-        // Always fetch products fresh to ensure we have the latest
-        console.log('[PROFILE-NEW-SUB] Fetching products...');
-        const list = await fetchProducts(true);
+        // Fetch products to ensure we have the latest
+        const list = products.length ? products : await fetchProducts(true);
         const productId = PRODUCT_IDS[planId as keyof typeof PRODUCT_IDS];
-
-        console.log('[PROFILE-NEW-SUB] Looking for product:', productId);
-        console.log('[PROFILE-NEW-SUB] Available products:', list.length);
-        console.log('[PROFILE-NEW-SUB] Product details:', list.map(p => ({
-          productId: (p as any).productId,
-          id: (p as any).id,
-          title: p.title
-        })));
-
-        const product = list.find(p => (p as any).productId === productId || (p as any).id === productId);
+        const product = list.find(p => p.productId === productId);
 
         if (!product) {
-          console.log('[PROFILE-NEW-SUB] ❌ Product not found!');
           Alert.alert(
             'Plan not available',
             'We couldn\'t find that plan. Please check your internet connection and try again.'
@@ -854,11 +851,9 @@ export default function ProfileScreen() {
           return;
         }
 
-        console.log('[PROFILE-NEW-SUB] ✅ Product found:', (product as any).productId || (product as any).id);
-
         // Set the current purchase attempt BEFORE starting the purchase
         setCurrentPurchaseAttempt(planId as 'monthly' | 'yearly' | 'weekly');
-        await handlePurchase((product as any).productId || (product as any).id);
+        await handlePurchase(product.productId);
       }
     } catch (error) {
       setCurrentPurchaseAttempt(null);

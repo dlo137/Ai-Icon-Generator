@@ -5,7 +5,7 @@ interface HeaderDropdownProps {
   isVisible: boolean;
   onClose: () => void;
   onAbout: () => void;
-  onContact: () => void;
+  onContact?: () => void; // Optional - kept for backward compatibility
   onUpgrade: () => void;
   onBilling: () => void;
 }
@@ -25,34 +25,8 @@ export default function HeaderDropdown({
   onBilling
 }: HeaderDropdownProps) {
 
-  const handleRateApp = async () => {
-    onClose();
-
-    try {
-      const appStoreUrl = Platform.OS === 'ios'
-        ? 'itms-apps://itunes.apple.com/app/id6755940269?action=write-review'
-        : 'market://details?id=com.watsonsweb.icongenerator';
-
-      const fallbackUrl = Platform.OS === 'ios'
-        ? 'https://apps.apple.com/app/id6755940269'
-        : 'https://play.google.com/store/apps/details?id=com.watsonsweb.icongenerator';
-
-      const canOpen = await Linking.canOpenURL(appStoreUrl);
-
-      if (canOpen) {
-        await Linking.openURL(appStoreUrl);
-      } else {
-        await Linking.openURL(fallbackUrl);
-      }
-    } catch (error) {
-      Alert.alert('Error', 'Unable to open app store. Please visit the app store manually to rate our app.');
-    }
-  };
-
   const menuItems = [
     { id: 'about', title: 'About', onPress: () => { onClose(); onAbout(); } },
-    { id: 'rate', title: 'Rate the App', onPress: handleRateApp },
-    { id: 'help', title: 'Help & Support', onPress: () => { onClose(); onContact(); } },
     { id: 'upgrade', title: 'Upgrade', onPress: () => { onClose(); onUpgrade(); } },
     { id: 'billing', title: 'Billing', onPress: () => { onClose(); onBilling(); } },
   ];

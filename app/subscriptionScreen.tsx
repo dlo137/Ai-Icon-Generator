@@ -43,7 +43,7 @@ export default function SubscriptionScreen() {
     lastError: null,
     timestamp: new Date().toISOString()
   });
-  const [showDebug, setShowDebug] = useState(true); // Set to false to hide debug panel
+  const [showDebug, setShowDebug] = useState(false); // Debug panel hidden for production
 
   // Check if IAP is available
   const isIAPAvailable = IAPService.isAvailable();
@@ -73,20 +73,16 @@ export default function SubscriptionScreen() {
         console.error('[SUBSCRIPTION] Error completing onboarding:', err);
       });
 
-      // Use router ref to ensure we have the latest router instance
-      const currentRouter = routerRef.current;
-      if (currentRouter && typeof currentRouter.replace === 'function') {
-        console.log('[SUBSCRIPTION] Router available, navigating now...');
-        setTimeout(() => {
+      // Navigate immediately without delay
+      console.log('[SUBSCRIPTION] Navigating to generate screen now...');
+      try {
+        router.replace('/(tabs)/generate');
+      } catch (err) {
+        console.error('[SUBSCRIPTION] Navigation failed:', err);
+        // Fallback: try router ref
+        const currentRouter = routerRef.current;
+        if (currentRouter && typeof currentRouter.replace === 'function') {
           currentRouter.replace('/(tabs)/generate');
-        }, 500);
-      } else {
-        console.error('[SUBSCRIPTION] Router not available or replace function missing!', currentRouter);
-        // Fallback: try direct navigation
-        try {
-          router.replace('/(tabs)/generate');
-        } catch (err) {
-          console.error('[SUBSCRIPTION] Fallback navigation failed:', err);
         }
       }
     }
@@ -793,15 +789,15 @@ export default function SubscriptionScreen() {
         </View>
       )}
 
-      {/* Show Debug Button when panel is hidden */}
-      {!showDebug && (
+      {/* Debug Button - Commented out for production */}
+      {/* {!showDebug && (
         <TouchableOpacity
           style={styles.showDebugButton}
           onPress={() => setShowDebug(true)}
         >
           <Text style={styles.showDebugText}>🔧</Text>
         </TouchableOpacity>
-      )}
+      )} */}
     </LinearGradient>
   );
 }
