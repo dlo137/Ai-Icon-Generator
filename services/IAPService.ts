@@ -276,24 +276,24 @@ class IAPService {
         });
       }
 
-      // v14+ API: requestPurchase with type: 'subs' and platform-specific request
+      // v14+ API: requestPurchase with platform-specific structure
       // Purchases are handled by listeners (event-based, not promise-based)
       if (Platform.OS === 'ios') {
+        // iOS requires both apple and ios properties for compatibility
         await RNIap.requestPurchase({
           type: 'subs',
           request: {
-            apple: {
-              sku: productId,
-            },
+            apple: { sku: productId },
+            ios: { sku: productId }, // Also set deprecated property for compatibility
           },
         });
       } else {
+        // Android
         await RNIap.requestPurchase({
           type: 'subs',
           request: {
-            google: {
-              skus: [productId],
-            },
+            google: { skus: [productId] },
+            android: { skus: [productId] }, // Also set deprecated property
           },
         });
       }
