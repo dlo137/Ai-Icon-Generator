@@ -3,6 +3,7 @@
 
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
+import * as RNIap from 'react-native-iap';
 
 // Product IDs - must match App Store Connect / Google Play Console exactly
 const SUBSCRIPTION_SKUS = Platform.OS === 'ios'
@@ -14,7 +15,6 @@ const isExpoGo = Constants.executionEnvironment === 'storeClient';
 
 class IAPService {
   private static instance: IAPService;
-  private RNIap: any = null;
   private isInitialized = false;
   private purchaseUpdateListener: any = null;
   private purchaseErrorListener: any = null;
@@ -31,7 +31,6 @@ class IAPService {
 
   /**
    * Initialize IAP connection
-   * CRITICAL: Only loads react-native-iap in native builds (not Expo Go)
    */
   async initialize(): Promise<boolean> {
     if (isExpoGo) {
@@ -45,13 +44,9 @@ class IAPService {
     }
 
     try {
-      // Load react-native-iap dynamically (prevents Expo Go crash)
-      console.log('[IAP] Loading react-native-iap module...');
-      this.RNIap = require('react-native-iap');
-
       // Initialize connection to App Store / Play Store
       console.log('[IAP] Connecting to store...');
-      await this.RNIap.initConnection();
+      await RNIap.initConnection();
       console.log('[IAP] ✅ Connected to store');
 
       // Set up purchase listeners
@@ -72,12 +67,10 @@ class IAPService {
    * Set up purchase event listeners
    */
   private setupListeners(): void {
-    if (!this.RNIap) return;
-
     // Listen for successful purchases
-    this.purchaseUpdateListener = this.RNIap.purchaseUpdatedListener(
+    this.purchaseUpdateListener = RNIap.purchaseUpdatedListener(
       async (purchase: any) => {
-        console.log('[IAP] Purchase updated:', purchase.productId);
+        console.log('[IAP] Purchase updated:', purchase.productId || purchase.productIds?.[0]);
 
         try {
           // Verify and finish the purchase
@@ -87,7 +80,7 @@ class IAPService {
           if (this.debugCallback) {
             this.debugCallback({
               status: 'success',
-              productId: purchase.productId,
+              productId: purchase.productId || purchase.productIds?.[0],
             });
           }
         } catch (error) {
@@ -97,7 +90,7 @@ class IAPService {
     );
 
     // Listen for purchase errors
-    this.purchaseErrorListener = this.RNIap.purchaseErrorListener(
+    this.purchaseErrorListener = RNIap.purchaseErrorListener(
       (error: any) => {
         console.error('[IAP] Purchase error:', error.message);
 
@@ -117,10 +110,8 @@ class IAPService {
    * Check for pending/unfinished purchases
    */
   private async checkPendingPurchases(): Promise<void> {
-    if (!this.RNIap) return;
-
     try {
-      const purchases = await this.RNIap.getAvailablePurchases();
+      const purchases = await RNIap.getAvailablePurchases();
 
       if (purchases && purchases.length > 0) {
         console.log('[IAP] Found', purchases.length, 'pending purchases');
@@ -138,22 +129,17 @@ class IAPService {
    * Finish a purchase (acknowledge on Android, finish on iOS)
    */
   private async finishPurchase(purchase: any): Promise<void> {
-    if (!this.RNIap) return;
-
     try {
       if (Platform.OS === 'android') {
-        await this.RNIap.acknowledgePurchaseAndroid({
-          token: purchase.purchaseToken,
-          developerPayload: purchase.developerPayloadAndroid,
-        });
+        // v14+ API: acknowledgePurchaseAndroid takes just the token string
+        await RNIap.acknowledgePurchaseAndroid(purchase.purchaseToken);
       } else {
-        await this.RNIap.finishTransaction({
-          purchase,
-          isConsumable: false,
-        });
+        // iOS: finishTransaction with purchase object
+        await RNIap.finishTransaction({ purchase });
       }
 
-      console.log('[IAP] ✅ Purchase finished:', purchase.productId);
+      const productId = purchase.productId || purchase.productIds?.[0];
+      console.log('[IAP] ✅ Purchase finished:', productId);
     } catch (error) {
       console.error('[IAP] Error finishing purchase:', error);
       throw error;
@@ -177,22 +163,24 @@ class IAPService {
       }
     }
 
-    if (!this.RNIap) {
-      throw new Error('IAP not initialized');
-    }
-
     try {
       console.log('[IAP] Fetching subscriptions:', SUBSCRIPTION_SKUS);
 
-      // Get subscription products (StoreKit 2 compatible)
-      const products = await this.RNIap.getSubscriptions({
+      // Get subscription products (v14+ API: fetchProducts with type: 'subs')
+      const products = await RNIap.fetchProducts({
         skus: SUBSCRIPTION_SKUS,
+        type: 'subs'
       });
+
+      if (!products) {
+        console.error('[IAP] No products returned');
+        return [];
+      }
 
       console.log('[IAP] ✅ Products loaded:', products.length);
 
       products.forEach((p: any) => {
-        console.log('[IAP]   -', p.productId, ':', p.localizedPrice || p.price);
+        console.log('[IAP]   -', p.id, ':', p.displayPrice);
       });
 
       return products;
@@ -216,23 +204,28 @@ class IAPService {
       return;
     }
 
-    if (!this.RNIap) {
-      throw new Error('IAP not initialized');
-    }
-
     try {
       console.log('[IAP] Purchasing:', productId);
 
+      // v14+ API: requestPurchase with type: 'subs' and platform-specific request
+      // Purchases are handled by listeners (event-based, not promise-based)
       if (Platform.OS === 'ios') {
-        // iOS with StoreKit 2 support
-        await this.RNIap.requestSubscription({
-          sku: productId,
-          andDangerouslyFinishTransactionAutomaticallyIOS: false,
+        await RNIap.requestPurchase({
+          type: 'subs',
+          request: {
+            apple: {
+              sku: productId,
+            },
+          },
         });
       } else {
-        // Android
-        await this.RNIap.requestSubscription({
-          sku: productId,
+        await RNIap.requestPurchase({
+          type: 'subs',
+          request: {
+            google: {
+              skus: [productId],
+            },
+          },
         });
       }
 
@@ -257,13 +250,9 @@ class IAPService {
       throw new Error('No purchases to restore');
     }
 
-    if (!this.RNIap) {
-      throw new Error('IAP not initialized');
-    }
-
     try {
       console.log('[IAP] Restoring purchases...');
-      const purchases = await this.RNIap.getAvailablePurchases();
+      const purchases = await RNIap.getAvailablePurchases();
 
       if (!purchases || purchases.length === 0) {
         throw new Error('No purchases found');
@@ -320,8 +309,8 @@ class IAPService {
       this.purchaseErrorListener = null;
     }
 
-    if (this.RNIap && this.isInitialized) {
-      await this.RNIap.endConnection();
+    if (this.isInitialized) {
+      await RNIap.endConnection();
       this.isInitialized = false;
     }
 

@@ -28,7 +28,6 @@ export default function SubscriptionScreen() {
   const [iapReady, setIapReady] = useState(false);
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [currentPurchaseAttempt, setCurrentPurchaseAttempt] = useState<'monthly' | 'yearly' | 'weekly' | null>(null);
-  const hasProcessedOrphansRef = useRef<boolean>(false);
 
   // Keep router ref updated
   useEffect(() => {
@@ -139,11 +138,8 @@ export default function SubscriptionScreen() {
         // Set up debug callback using the stable callback
         IAPService.setDebugCallback(handleIAPCallback);
 
-        // Check for orphaned transactions on startup
-        if (!hasProcessedOrphansRef.current) {
-          hasProcessedOrphansRef.current = true;
-          await IAPService.checkForOrphanedTransactions();
-        }
+        // Note: Pending purchases are automatically checked during initialize()
+        // No need for separate orphaned transaction check
 
         // Fetch products
         await fetchProducts();
@@ -735,11 +731,9 @@ export default function SubscriptionScreen() {
               style={styles.debugButton}
               onPress={() => {
                 const status = IAPService.getConnectionStatus();
-                const lastResult = IAPService.getLastPurchaseResult();
                 setDebugInfo((prev: any) => ({
                   ...prev,
                   connectionStatus: status,
-                  lastPurchaseResult: lastResult,
                   timestamp: new Date().toISOString(),
                   manualCheck: true
                 }));
