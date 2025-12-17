@@ -8,15 +8,15 @@ import { completeOnboarding } from '../src/features/auth/api';
 import Constants from 'expo-constants';
 import { supabase } from '../lib/supabase';
 
-// Platform-specific product IDs.
+// Platform-specific product IDs - must match App Store Connect / Google Play Console
 const PRODUCT_IDS = Platform.OS === 'ios' ? {
-  yearly: 'icon.yearly',
-  monthly: 'icon.monthly',
-  weekly: 'icon.weekly',
+  yearly: 'ai.icons.yearly',
+  monthly: 'ai.icons.monthly',
+  weekly: 'ai.icons.weekly',
 } : {
-  yearly: 'ai.icon.pro:yearly',
-  monthly: 'ai.icon.pro:monthly',
-  weekly: 'ai.icon.pro:weekly',
+  yearly: 'ai.icons.yearly',
+  monthly: 'ai.icons.monthly',
+  weekly: 'ai.icons.weekly',
 };
 
 export default function SubscriptionScreen() {
