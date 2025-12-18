@@ -868,9 +868,15 @@ export default function ProfileScreen() {
       return;
     }
 
+    if (!currentPurchaseAttempt) {
+      console.error('[PROFILE] No purchase attempt set!');
+      Alert.alert('Error', 'Please select a plan first.');
+      return;
+    }
+
     try {
-      console.log('[PROFILE] Attempting to purchase:', productId);
-      await IAPService.purchaseProduct(productId);
+      console.log('[PROFILE] Attempting to purchase:', productId, 'for plan:', currentPurchaseAttempt);
+      await IAPService.purchaseProduct(productId, currentPurchaseAttempt);
 
       // On success, close modal and reload data
       setIsBillingModalVisible(false);

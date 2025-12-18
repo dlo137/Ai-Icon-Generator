@@ -354,8 +354,8 @@ export default function SubscriptionScreen() {
     }
 
     try {
-      console.log('[SUBSCRIPTION] Attempting to purchase:', productId);
-      await IAPService.purchaseProduct(productId);
+      console.log('[SUBSCRIPTION] Attempting to purchase:', productId, 'for plan:', selectedPlan);
+      await IAPService.purchaseProduct(productId, selectedPlan);
     } catch (e: any) {
       setCurrentPurchaseAttempt(null); // Clear on error
       const msg = String(e?.message || e);

@@ -5,6 +5,7 @@ import { Platform, Alert } from 'react-native';
 import Constants from 'expo-constants';
 import * as RNIap from 'react-native-iap';
 import { updateSubscriptionInProfile } from '../src/features/subscription/api';
+import type { SubscriptionPlan } from '../src/features/subscription/plans';
 
 // Product IDs - must match App Store Connect / Google Play Console exactly
 const SUBSCRIPTION_SKUS = Platform.OS === 'ios'
@@ -22,6 +23,7 @@ class IAPService {
   private debugCallback: ((info: any) => void) | null = null;
   private processedIds: Set<string> = new Set();
   private lastPurchaseResult: any = null;
+  private currentPurchaseAttempt: SubscriptionPlan | null = null; // The plan the user SELECTED
 
   private constructor() {}
 
@@ -73,40 +75,20 @@ class IAPService {
     // Listen for successful purchases
     this.purchaseUpdateListener = RNIap.purchaseUpdatedListener(
       async (purchase: any) => {
-        // Extract product ID - v14 uses different structures for iOS/Android
-        let productId: string | undefined;
-
-        // Try all possible locations (order matters)
-        if (purchase.productId && typeof purchase.productId === 'string') {
-          productId = purchase.productId;
-        } else if (purchase.id && typeof purchase.id === 'string') {
-          productId = purchase.id;
-        } else if (purchase.product && typeof purchase.product === 'string') {
-          productId = purchase.product;
-        } else if (Array.isArray(purchase.productIds) && purchase.productIds.length > 0) {
-          productId = purchase.productIds[0];
-        } else if (purchase.products && Array.isArray(purchase.products) && purchase.products.length > 0) {
-          productId = purchase.products[0];
-        }
-
         console.log('[IAP] ========== PURCHASE RECEIVED ==========');
-        console.log('[IAP] Product ID extracted:', productId);
         console.log('[IAP] Full purchase object:', JSON.stringify(purchase, null, 2));
 
-        if (!productId) {
-          console.error('[IAP] ❌ Could not extract product ID from purchase!');
-          throw new Error('Unable to determine product ID from purchase');
+        // Use the plan the user SELECTED, not what Apple/Google says
+        // Apple's purchase object is unreliable for subscription groups
+        const plan = this.currentPurchaseAttempt;
+
+        if (!plan) {
+          console.error('[IAP] ❌ No current purchase attempt! Cannot determine which plan was selected.');
+          throw new Error('Purchase succeeded but no plan was selected. This should never happen.');
         }
 
-        // Validate product ID format
-        const validProductIds = ['ai.icons.weekly', 'ai.icons.monthly', 'ai.icons.yearly'];
-        if (!validProductIds.includes(productId)) {
-          console.warn('[IAP] ⚠️ Product ID not in expected format:', productId);
-          console.warn('[IAP] ⚠️ Expected one of:', validProductIds);
-          // Continue anyway, but log the warning
-        } else {
-          console.log('[IAP] ✓ Product ID validated:', productId);
-        }
+        console.log('[IAP] ✅ Using user-selected plan:', plan);
+        console.log('[IAP] (Ignoring purchase object productId - Apple is unreliable for subscription groups)');
 
         if (this.debugCallback) {
           this.debugCallback({
@@ -153,10 +135,10 @@ class IAPService {
 
           // Try to update Supabase, but don't let it block the success flow
           console.log('[IAP] Calling updateSubscriptionInProfile with:');
-          console.log('[IAP]   - productId:', productId);
+          console.log('[IAP]   - plan (user selected):', plan);
           console.log('[IAP]   - purchaseId:', purchaseId);
           console.log('[IAP]   - purchaseTime:', purchaseTime);
-          updateSubscriptionInProfile(productId, purchaseId, purchaseTime)
+          updateSubscriptionInProfile(plan, purchaseId, purchaseTime)
             .then(() => {
               console.log('[IAP] ✅ Supabase profile updated successfully');
             })
@@ -328,8 +310,12 @@ class IAPService {
   /**
    * Purchase a subscription
    * @param productId - Product SKU (e.g., 'ai.icons.yearly')
+   * @param plan - The plan the user selected (weekly/monthly/yearly)
    */
-  async purchaseProduct(productId: string): Promise<void> {
+  async purchaseProduct(productId: string, plan: SubscriptionPlan): Promise<void> {
+    // Store the plan the user selected - this is our source of truth
+    this.currentPurchaseAttempt = plan;
+    console.log('[IAP] Purchase attempt started for plan:', plan);
     if (isExpoGo) {
       console.log('[IAP] Expo Go - simulating purchase');
       await new Promise(resolve => setTimeout(resolve, 1000));

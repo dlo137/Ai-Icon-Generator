@@ -1,6 +1,5 @@
 import { supabase } from "../../../lib/supabase";
-
-export type SubscriptionPlan = 'weekly' | 'monthly' | 'yearly';
+import { PLAN_CONFIG, calculateEndDate, type SubscriptionPlan } from './plans';
 
 export interface SubscriptionData {
   subscription_plan: SubscriptionPlan;
@@ -68,14 +67,17 @@ function getPlanFromProductId(productId: string): SubscriptionPlan {
 
 /**
  * Update user's subscription information in Supabase profile table
+ *
+ * IMPORTANT: Use the plan the user SELECTED, not what's in the purchase object.
+ * Apple's purchase object is unreliable for determining which specific plan was purchased.
  */
 export async function updateSubscriptionInProfile(
-  productId: string,
+  plan: SubscriptionPlan,
   purchaseId: string,
   purchaseTime?: string
 ): Promise<void> {
   console.log('[SUBSCRIPTION API] ========== START UPDATE ==========');
-  console.log('[SUBSCRIPTION API] Product ID:', productId);
+  console.log('[SUBSCRIPTION API] Plan (USER SELECTED):', plan);
   console.log('[SUBSCRIPTION API] Purchase ID:', purchaseId);
   console.log('[SUBSCRIPTION API] Purchase Time:', purchaseTime);
 
@@ -97,6 +99,18 @@ export async function updateSubscriptionInProfile(
     console.log('[SUBSCRIPTION API] ✅ User authenticated:', user.id);
     console.log('[SUBSCRIPTION API] User email:', user.email);
 
+    // Get plan configuration (single source of truth)
+    const config = PLAN_CONFIG[plan];
+    const productId = config.productId;
+    const price = config.price;
+    const credits_max = config.credits;
+
+    console.log('[SUBSCRIPTION API] Plan config:', {
+      productId,
+      price,
+      credits: credits_max,
+    });
+
     // Ensure subscription_id is never null/undefined
     let subscriptionId = purchaseId;
     if (!subscriptionId) {
@@ -106,37 +120,13 @@ export async function updateSubscriptionInProfile(
       console.log('[SUBSCRIPTION API] ⚠️ Purchase ID was null, generated unique ID:', subscriptionId);
     }
 
-    // Determine plan type from product ID
-    const plan = getPlanFromProductId(productId);
-    console.log('[SUBSCRIPTION API] Detected plan:', plan);
-
-    // Get price for the plan
-    const price = getPriceForPlan(plan);
-    console.log('[SUBSCRIPTION API] Plan price:', price);
-
     // Check if it's a trial (only yearly has trial)
     const isTrial = plan === 'yearly';
 
-    // Determine credits based on plan
-    let credits_max = 0;
-    switch (plan) {
-      case 'yearly': credits_max = 90; break;
-      case 'monthly': credits_max = 75; break;
-      case 'weekly': credits_max = 10; break;
-    }
-    console.log('[SUBSCRIPTION API] Credits:', credits_max);
-
-    // Calculate subscription end date based on plan
+    // Calculate subscription dates
     const now = new Date();
     const startDate = purchaseTime || now.toISOString();
-    const endDate = new Date(startDate);
-    if (plan === 'weekly') {
-      endDate.setDate(endDate.getDate() + 7);
-    } else if (plan === 'monthly') {
-      endDate.setMonth(endDate.getMonth() + 1);
-    } else if (plan === 'yearly') {
-      endDate.setFullYear(endDate.getFullYear() + 1);
-    }
+    const endDate = calculateEndDate(plan, new Date(startDate));
 
     // Get user's name/email for the name field
     // Try multiple sources for Google OAuth and other providers
@@ -149,10 +139,9 @@ export async function updateSubscriptionInProfile(
                     'User';
 
     console.log('[SUBSCRIPTION API] Extracted user name:', userName);
-    console.log('[SUBSCRIPTION API] User metadata:', JSON.stringify(user?.user_metadata, null, 2));
-    console.log('[SUBSCRIPTION API] User identities:', JSON.stringify(user?.identities, null, 2));
 
     // Prepare subscription data with all necessary fields
+    // Using PLAN_CONFIG as single source of truth
     const subscriptionData = {
       subscription_plan: plan,
       subscription_id: subscriptionId,
@@ -171,7 +160,8 @@ export async function updateSubscriptionInProfile(
       email: user?.email || null,
     };
 
-    console.log('[SUBSCRIPTION API] Prepared subscription data:', JSON.stringify(subscriptionData, null, 2));
+    console.log('[SUBSCRIPTION API] ✅ Subscription data prepared from PLAN_CONFIG');
+    console.log('[SUBSCRIPTION API] Data:', JSON.stringify(subscriptionData, null, 2));
 
     // Check if profile exists
     console.log('[SUBSCRIPTION API] Checking if profile exists...');
