@@ -5,7 +5,7 @@ import { Platform, Alert } from 'react-native';
 import Constants from 'expo-constants';
 import * as RNIap from 'react-native-iap';
 import { updateSubscriptionInProfile } from '../src/features/subscription/api';
-import type { SubscriptionPlan } from '../src/features/subscription/plans';
+import { PLAN_CONFIG, type SubscriptionPlan } from '../src/features/subscription/plans';
 
 // Product IDs - must match App Store Connect / Google Play Console exactly
 const SUBSCRIPTION_SKUS = Platform.OS === 'ios'
@@ -89,6 +89,10 @@ class IAPService {
 
         console.log('[IAP] ✅ Using user-selected plan:', plan);
         console.log('[IAP] (Ignoring purchase object productId - Apple is unreliable for subscription groups)');
+
+        // Get the correct productId from our plan config
+        const productId = PLAN_CONFIG[plan].productId;
+        console.log('[IAP] Product ID from plan config:', productId);
 
         if (this.debugCallback) {
           this.debugCallback({
