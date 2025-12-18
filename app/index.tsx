@@ -13,6 +13,8 @@ export default function WelcomeScreen() {
   const [step, setStep] = useState(1);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [selectedStruggles, setSelectedStruggles] = useState<string[]>([]);
+  const [isAnimating, setIsAnimating] = useState(false);
+  const [showConfetti, setShowConfetti] = useState(true);
   const slideAnim = useRef(new Animated.Value(0)).current;
   const glowAnim = useRef(new Animated.Value(0)).current;
   const confettiRef = useRef(null);
@@ -91,13 +93,28 @@ export default function WelcomeScreen() {
   };
 
   const handleGetStarted = () => {
+    // Prevent rapid clicking during animation
+    if (isAnimating) return;
+
+    setIsAnimating(true);
+
+    // Hide confetti immediately to prevent render blocking
+    if (step === 1) {
+      setShowConfetti(false);
+    }
+
     try {
+      // Slide out current content
       Animated.timing(slideAnim, {
         toValue: -1,
         duration: 250,
         useNativeDriver: true,
       }).start(() => {
         try {
+          // Set position for new content (off-screen right) BEFORE updating step
+          slideAnim.setValue(1);
+
+          // Now update the step - new content will render at position 1 (off-screen right)
           if (step === 1) {
             setStep(2);
           } else if (step === 2) {
@@ -105,19 +122,28 @@ export default function WelcomeScreen() {
           } else if (step === 3) {
             setStep(5);
           } else {
+            setIsAnimating(false);
             router.push('/signup');
+            return;
           }
-          slideAnim.setValue(1);
-          Animated.timing(slideAnim, {
-            toValue: 0,
-            duration: 250,
-            useNativeDriver: true,
-          }).start();
+
+          // Wait for next frame to ensure React has rendered the new content
+          requestAnimationFrame(() => {
+            // Slide in new content from right
+            Animated.timing(slideAnim, {
+              toValue: 0,
+              duration: 250,
+              useNativeDriver: true,
+            }).start(() => {
+              setIsAnimating(false);
+            });
+          });
         } catch (error) {
-          // Animation callback error
+          setIsAnimating(false);
         }
       });
     } catch (error) {
+      setIsAnimating(false);
       // Fallback navigation
       router.push('/signup');
     }
@@ -247,7 +273,7 @@ export default function WelcomeScreen() {
           </Animated.View>
         ) : (step === 1 || step === 2) ? (
           <View style={styles.imageContainer}>
-            {step === 1 && (
+            {step === 1 && showConfetti && (
               <View style={styles.confettiWrapper}>
                 <ConfettiCannon
                   ref={confettiRef}
@@ -304,6 +330,7 @@ export default function WelcomeScreen() {
               </View>
             )}
             <Animated.Image
+              key={`onboarding-image-${step}`}
               source={step === 1 ? require('../assets/onboarding3.png') : step === 2 ? require('../assets/onboarding2.png') : require('../assets/onboarding3.png')}
               style={[
                 styles.heroImage,
@@ -419,6 +446,13 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   screenTitle: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: TEXT,
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  Title: {
     fontSize: 32,
     fontWeight: 'bold',
     color: TEXT,

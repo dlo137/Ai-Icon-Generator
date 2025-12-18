@@ -8,7 +8,8 @@ import { useModal } from '../../src/contexts/ModalContext';
 import { supabase } from '../../lib/supabase';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getSubscriptionInfo, SubscriptionInfo, getCredits, CreditsInfo } from '../../src/utils/subscriptionStorage';
-import { getSubscriptionInfo as getSupabaseSubscriptionInfo, changePlan, cancelSubscription, SubscriptionPlan } from '../../src/features/subscription/api';
+import { getSubscriptionInfo as getSupabaseSubscriptionInfo, changePlan, cancelSubscription } from '../../src/features/subscription/api';
+import type { SubscriptionPlan } from '../../src/features/subscription/plans';
 import * as StoreReview from 'expo-store-review';
 import IAPService from '../../services/IAPService';
 import Constants from 'expo-constants';
@@ -730,8 +731,7 @@ export default function ProfileScreen() {
                     return;
                   }
 
-                  setCurrentPurchaseAttempt(planId as 'monthly' | 'yearly' | 'weekly');
-                  await handlePurchase(product.productId);
+                  await handlePurchase(product.productId, planId as 'monthly' | 'yearly' | 'weekly');
                 }
               }
             ]
@@ -851,9 +851,8 @@ export default function ProfileScreen() {
           return;
         }
 
-        // Set the current purchase attempt BEFORE starting the purchase
-        setCurrentPurchaseAttempt(planId as 'monthly' | 'yearly' | 'weekly');
-        await handlePurchase(product.productId);
+        // Start the purchase with the selected plan
+        await handlePurchase(product.productId, planId as 'monthly' | 'yearly' | 'weekly');
       }
     } catch (error) {
       setCurrentPurchaseAttempt(null);
@@ -861,22 +860,19 @@ export default function ProfileScreen() {
     }
   };
 
-  const handlePurchase = async (productId: string) => {
+  const handlePurchase = async (productId: string, plan: 'weekly' | 'monthly' | 'yearly') => {
     if (!isIAPAvailable) {
       Alert.alert('Purchases unavailable', 'In-app purchases are not available on this device.');
       setCurrentPurchaseAttempt(null);
       return;
     }
 
-    if (!currentPurchaseAttempt) {
-      console.error('[PROFILE] No purchase attempt set!');
-      Alert.alert('Error', 'Please select a plan first.');
-      return;
-    }
+    // Update state for tracking
+    setCurrentPurchaseAttempt(plan);
 
     try {
-      console.log('[PROFILE] Attempting to purchase:', productId, 'for plan:', currentPurchaseAttempt);
-      await IAPService.purchaseProduct(productId, currentPurchaseAttempt);
+      console.log('[PROFILE] Attempting to purchase:', productId, 'for plan:', plan);
+      await IAPService.purchaseProduct(productId, plan);
 
       // On success, close modal and reload data
       setIsBillingModalVisible(false);
