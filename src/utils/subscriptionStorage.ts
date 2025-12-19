@@ -66,10 +66,26 @@ let isResetting = false;
 // Credits Management Functions - Now uses Supabase for real-time tracking with automatic resets
 export const getCredits = async (): Promise<CreditsInfo> => {
   try {
+    // Check if guest mode first
+    const { isGuestSession } = require('./guestSession');
+    const { getGuestCredits } = require('./guestCredits');
+
+    const isGuest = await isGuestSession();
+
+    if (isGuest) {
+      // Guest flow: Use local storage only
+      return await getGuestCredits();
+    }
+
     // First try to get from Supabase edge function
     // The edge function now automatically checks if credits need to be reset based on subscription cycle
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+      if (sessionError) {
+        console.log('Session error in getCredits:', sessionError.message);
+        throw sessionError;
+      }
 
       if (session) {
         // First check what the subscription plan is
@@ -151,9 +167,25 @@ export const saveCredits = async (credits: CreditsInfo): Promise<void> => {
 
 export const deductCredit = async (amount: number = 1): Promise<boolean> => {
   try {
+    // Check if guest mode first
+    const { isGuestSession } = require('./guestSession');
+    const { deductGuestCredit } = require('./guestCredits');
+
+    const isGuest = await isGuestSession();
+
+    if (isGuest) {
+      // Guest flow: Deduct from local storage only
+      return await deductGuestCredit(amount);
+    }
+
     // Try to deduct from Supabase first
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+      if (sessionError) {
+        console.log('Session error in deductCredit:', sessionError.message);
+        throw sessionError;
+      }
 
       if (session) {
         const { data, error } = await supabase.functions.invoke('manage-credits', {
@@ -232,9 +264,27 @@ export const resetCredits = async (): Promise<void> => {
       lastResetDate: new Date().toISOString()
     };
 
+    // Check if guest mode first
+    const { isGuestSession } = require('./guestSession');
+    const { resetGuestCredits } = require('./guestCredits');
+
+    const isGuest = await isGuestSession();
+
+    if (isGuest) {
+      // Guest flow: Reset local credits only
+      await resetGuestCredits();
+      return;
+    }
+
     // Try to reset in Supabase first
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+      if (sessionError) {
+        console.log('Session error in resetCredits:', sessionError.message);
+        throw sessionError;
+      }
+
       if (session) {
         await supabase.functions.invoke('manage-credits', {
           body: { action: 'reset' }

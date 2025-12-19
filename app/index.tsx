@@ -59,7 +59,30 @@ export default function WelcomeScreen() {
 
   const checkSession = async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session }, error } = await supabase.auth.getSession();
+
+      // Handle refresh token errors by clearing the session
+      if (error) {
+        console.log('Session error detected:', error.message);
+
+        // Clear invalid session if it's a token-related error
+        if (error.message?.toLowerCase().includes('refresh token') ||
+            error.message?.toLowerCase().includes('invalid') ||
+            error.message?.toLowerCase().includes('jwt')) {
+          console.log('Invalid token detected, clearing session...');
+          try {
+            await supabase.auth.signOut();
+            const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+            await AsyncStorage.removeItem('supabase.auth.token');
+          } catch (clearError) {
+            console.error('Error clearing session:', clearError);
+          }
+        }
+
+        setIsCheckingAuth(false);
+        return;
+      }
+
       if (session) {
         // Check if user has completed onboarding by verifying profile exists
         const { data: profile } = await supabase
@@ -79,7 +102,23 @@ export default function WelcomeScreen() {
       } else {
         setIsCheckingAuth(false);
       }
-    } catch (error) {
+    } catch (error: any) {
+      console.error('Error checking session:', error);
+
+      // If we get a refresh token error, clear the bad session
+      if (error?.message?.toLowerCase().includes('refresh token') ||
+          error?.message?.toLowerCase().includes('invalid') ||
+          error?.message?.toLowerCase().includes('jwt')) {
+        console.log('Clearing bad session after error...');
+        try {
+          await supabase.auth.signOut();
+          const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+          await AsyncStorage.removeItem('supabase.auth.token');
+        } catch (clearError) {
+          console.error('Error clearing session:', clearError);
+        }
+      }
+
       setIsCheckingAuth(false);
     }
   };

@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
 import { useRouter } from 'expo-router';
 import { signUpEmail, signInWithApple, signInWithGoogle } from '../src/features/auth/api';
+import { createGuestSession, isGuestSession, upgradeGuestToAccount } from '../src/utils/guestSession';
 
 export default function SignUpScreen() {
   const [name, setName] = useState('');
@@ -29,6 +30,22 @@ export default function SignUpScreen() {
       const data = await signUpEmail(email, password, name);
 
       if (data.user) {
+        // Check if user was a guest and migrate data
+        const wasGuest = await isGuestSession();
+
+        if (wasGuest) {
+          try {
+            await upgradeGuestToAccount(data.user.id);
+            Alert.alert(
+              'Account Created!',
+              'Your purchases and thumbnails have been saved to your account.'
+            );
+          } catch (migrateError) {
+            console.error('Migration error:', migrateError);
+            // Continue even if migration fails
+          }
+        }
+
         router.push('/loadingaccount');
       }
 
@@ -102,6 +119,23 @@ export default function SignUpScreen() {
     );
   };
 
+  const handleGuestMode = async () => {
+    setIsLoading(true);
+
+    try {
+      // Create guest session
+      await createGuestSession();
+
+      // Navigate to loading screen first (like authenticated users)
+      router.push('/loadingaccount');
+    } catch (error: any) {
+      console.error('Guest mode error:', error);
+      Alert.alert('Error', 'Failed to start guest mode. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -155,6 +189,15 @@ export default function SignUpScreen() {
                 {isLoading ? 'Signing up...' : 'Sign Up With Google'}
               </Text>
             </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.guestButton}
+            onPress={handleGuestMode}
+            disabled={isLoading}
+          >
+            <Text style={styles.guestButtonText}>Continue as Guest</Text>
+            <Text style={styles.guestButtonSubtext}>Try the app without an account</Text>
           </TouchableOpacity>
 
           <View style={styles.dividerContainer}>
@@ -430,6 +473,29 @@ const styles = StyleSheet.create({
     color: '#3C4043',
     fontSize: 16,
     fontWeight: '600',
+  },
+  guestButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#4b5563',
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+    marginTop: 8,
+  },
+  guestButtonText: {
+    color: '#93c5fd',
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  guestButtonSubtext: {
+    color: '#8a9099',
+    fontSize: 12,
+    fontWeight: '400',
   },
   buttonContent: {
     flexDirection: 'row',

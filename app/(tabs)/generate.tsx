@@ -20,8 +20,25 @@ const AnimatedRect = Animated.createAnimatedComponent(Rect);
 // Utility function to upload image to Supabase Storage
 const uploadImageToStorage = async (imageUri: string, fileName: string): Promise<string | null> => {
   try {
+    // Check if guest mode - skip Supabase upload
+    const { isGuestSession } = require('../../src/utils/guestSession');
+    const isGuest = await isGuestSession();
+
+    if (isGuest) {
+      // For guests, return local URI (no Supabase upload)
+      console.log('[Upload] Guest mode - using local storage only');
+      return imageUri;
+    }
+
     // Get auth session - REQUIRED for user isolation
-    const { data: { session } } = await supabase.auth.getSession();
+    const { data: { session }, error } = await supabase.auth.getSession();
+
+    // Handle session errors gracefully
+    if (error) {
+      console.error('Session error in uploadImageToStorage:', error.message);
+      return null;
+    }
+
     const authToken = session?.access_token;
     const userId = session?.user?.id;
 

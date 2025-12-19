@@ -7,6 +7,9 @@ import IAPService from '../services/IAPService';
 import { completeOnboarding } from '../src/features/auth/api';
 import Constants from 'expo-constants';
 import { supabase } from '../lib/supabase';
+import { isGuestSession } from '../src/utils/guestSession';
+import { saveGuestPurchase } from '../src/utils/guestPurchaseStorage';
+import { initializeGuestCredits } from '../src/utils/guestCredits';
 
 // Platform-specific product IDs - must match App Store Connect / Google Play Console
 const PRODUCT_IDS = Platform.OS === 'ios' ? {
@@ -225,7 +228,39 @@ export default function SubscriptionScreen() {
       setCurrentPurchaseAttempt(selectedPlan);
       console.log('[EXPO GO] Simulating purchase for plan:', selectedPlan);
 
-      // Get current user
+      // Check if guest mode
+      const isGuest = await isGuestSession();
+
+      if (isGuest) {
+        console.log('[EXPO GO] Guest mode - using local storage');
+
+        // Calculate credits based on plan
+        let credits = 0;
+        if (selectedPlan === 'weekly') credits = 10;
+        else if (selectedPlan === 'monthly') credits = 75;
+        else if (selectedPlan === 'yearly') credits = 90;
+
+        // Save guest purchase locally
+        await saveGuestPurchase({
+          plan: selectedPlan,
+          purchaseId: `expo_go_guest_${Date.now()}`,
+          purchaseTime: new Date().toISOString(),
+          productId: PRODUCT_IDS[selectedPlan],
+          isActive: true
+        });
+
+        // Initialize guest credits
+        await initializeGuestCredits(selectedPlan);
+
+        console.log('[EXPO GO] Guest purchase simulated successfully');
+        Alert.alert('Success', 'Purchase successful!');
+
+        // Navigate to generate screen
+        router.replace('/(tabs)/generate');
+        return;
+      }
+
+      // Get current user for authenticated flow
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) {
         throw new Error('User not authenticated');

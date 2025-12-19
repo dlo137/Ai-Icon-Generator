@@ -39,7 +39,26 @@ export interface SavedThumbnail {
 // Get user-specific storage key
 const getStorageKey = async (): Promise<string | null> => {
   try {
-    const { data: { session } } = await supabase.auth.getSession();
+    // Check if guest mode first
+    const { isGuestSession, getGuestSession } = require('./guestSession');
+    const isGuest = await isGuestSession();
+
+    if (isGuest) {
+      const guestSession = await getGuestSession();
+      if (!guestSession) {
+        console.error('Guest session not found');
+        return null;
+      }
+      return `saved_thumbnails_${guestSession.sessionId}`;
+    }
+
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+    if (sessionError) {
+      console.error('Session error in getStorageKey:', sessionError.message);
+      return null;
+    }
+
     const userId = session?.user?.id;
 
     if (!userId) {
@@ -58,7 +77,26 @@ const getStorageKey = async (): Promise<string | null> => {
 // Get user-specific thumbnail directory
 const getThumbnailDir = async (): Promise<string | null> => {
   try {
-    const { data: { session } } = await supabase.auth.getSession();
+    // Check if guest mode first
+    const { isGuestSession, getGuestSession } = require('./guestSession');
+    const isGuest = await isGuestSession();
+
+    if (isGuest) {
+      const guestSession = await getGuestSession();
+      if (!guestSession) {
+        console.error('Guest session not found');
+        return null;
+      }
+      return `${FileSystem.documentDirectory}thumbnails/${guestSession.sessionId}/`;
+    }
+
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+    if (sessionError) {
+      console.error('Session error in getThumbnailDir:', sessionError.message);
+      return null;
+    }
+
     const userId = session?.user?.id;
 
     if (!userId) {

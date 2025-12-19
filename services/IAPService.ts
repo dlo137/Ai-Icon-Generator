@@ -6,6 +6,9 @@ import Constants from 'expo-constants';
 import * as RNIap from 'react-native-iap';
 import { updateSubscriptionInProfile } from '../src/features/subscription/api';
 import { PLAN_CONFIG, type SubscriptionPlan } from '../src/features/subscription/plans';
+import { isGuestSession } from '../src/utils/guestSession';
+import { saveGuestPurchase } from '../src/utils/guestPurchaseStorage';
+import { initializeGuestCredits } from '../src/utils/guestCredits';
 
 // Product IDs - must match App Store Connect / Google Play Console exactly
 const SUBSCRIPTION_SKUS = Platform.OS === 'ios'
@@ -102,6 +105,15 @@ class IAPService {
         }
 
         try {
+          // Check if this is a guest purchase
+          const isGuest = await isGuestSession();
+
+          if (isGuest) {
+            console.log('[IAP] Guest mode detected - using local storage');
+            await this.handleGuestPurchase(purchase, plan);
+            return;
+          }
+
           // Verify and finish the purchase
           await this.finishPurchase(purchase);
 
@@ -148,12 +160,7 @@ class IAPService {
             })
             .catch((error) => {
               console.error('[IAP] ⚠️ Supabase update failed (non-blocking):', error);
-              // Show error to user for debugging (temporary)
-              Alert.alert(
-                'Database Update Failed',
-                `Purchase successful but profile update failed:\n\n${error?.message || 'Unknown error'}\n\nPlease check the console logs for details.`,
-                [{ text: 'OK' }]
-              );
+              // Error is logged but not shown to user since purchase succeeded
             });
 
           // Update last purchase result
@@ -257,6 +264,92 @@ class IAPService {
       console.error('[IAP] Error finishing purchase:', error);
       throw error;
     }
+  }
+
+  /**
+   * Handle guest purchase (device-local storage only)
+   */
+  private async handleGuestPurchase(purchase: any, plan: SubscriptionPlan): Promise<void> {
+    console.log('[IAP] ========== GUEST PURCHASE ==========');
+
+    try {
+      // 1. Finish the purchase with store
+      await this.finishPurchase(purchase);
+
+      // 2. Get purchase data
+      const purchaseId = purchase.transactionId || purchase.purchaseToken || `guest_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+      const purchaseTime = purchase.transactionDate
+        ? (typeof purchase.transactionDate === 'number'
+          ? new Date(purchase.transactionDate).toISOString()
+          : purchase.transactionDate)
+        : new Date().toISOString();
+      const productId = PLAN_CONFIG[plan].productId;
+
+      console.log('[IAP] Guest purchase ID:', purchaseId);
+      console.log('[IAP] Guest purchase time:', purchaseTime);
+      console.log('[IAP] Guest plan:', plan);
+
+      // 3. Store purchase locally
+      await saveGuestPurchase({
+        plan,
+        purchaseId,
+        purchaseTime,
+        productId,
+        isActive: true
+      });
+
+      // 4. Initialize guest credits
+      await initializeGuestCredits(plan);
+
+      // 5. Update last purchase result
+      this.lastPurchaseResult = {
+        success: true,
+        productId,
+        timestamp: purchaseTime
+      };
+
+      // 6. Notify success
+      console.log('[IAP] ✅ Guest purchase complete!');
+      if (this.debugCallback) {
+        this.debugCallback({
+          listenerStatus: 'GUEST PURCHASE SUCCESS! ✅',
+          shouldNavigate: true,
+          purchaseComplete: true,
+          productId
+        });
+      }
+    } catch (error) {
+      console.error('[IAP] Error processing guest purchase:', error);
+
+      if (this.debugCallback) {
+        this.debugCallback({
+          listenerStatus: 'GUEST PURCHASE FAILED ❌'
+        });
+      }
+
+      throw error;
+    }
+  }
+
+  /**
+   * Detect subscription plan from purchase object
+   */
+  private detectPlanFromPurchase(purchase: any): SubscriptionPlan {
+    const productId = (purchase.productId || purchase.productIds?.[0] || '').toLowerCase();
+
+    console.log('[IAP] Detecting plan from productId:', productId);
+
+    if (productId.includes('yearly')) {
+      return 'yearly';
+    } else if (productId.includes('monthly')) {
+      return 'monthly';
+    } else if (productId.includes('weekly')) {
+      return 'weekly';
+    }
+
+    // Default to weekly if no match
+    console.warn('[IAP] Could not detect plan, defaulting to weekly');
+    return 'weekly';
   }
 
   /**
@@ -393,6 +486,7 @@ class IAPService {
 
     try {
       console.log('[IAP] Restoring purchases...');
+      const isGuest = await isGuestSession();
       const purchases = await RNIap.getAvailablePurchases();
 
       if (!purchases || purchases.length === 0) {
@@ -403,6 +497,29 @@ class IAPService {
 
       for (const purchase of purchases) {
         await this.finishPurchase(purchase);
+
+        if (isGuest) {
+          // Restore to local storage for guests
+          const plan = this.detectPlanFromPurchase(purchase);
+          const purchaseId = purchase.transactionId || purchase.purchaseToken || `restored_${Date.now()}`;
+          const purchaseTime = purchase.transactionDate
+            ? (typeof purchase.transactionDate === 'number'
+              ? new Date(purchase.transactionDate).toISOString()
+              : purchase.transactionDate)
+            : new Date().toISOString();
+
+          console.log('[IAP] Restoring guest purchase:', plan);
+
+          await saveGuestPurchase({
+            plan,
+            purchaseId,
+            purchaseTime,
+            productId: PLAN_CONFIG[plan].productId,
+            isActive: true
+          });
+
+          await initializeGuestCredits(plan);
+        }
       }
 
       return purchases;

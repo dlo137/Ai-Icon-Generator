@@ -13,6 +13,8 @@ import type { SubscriptionPlan } from '../../src/features/subscription/plans';
 import * as StoreReview from 'expo-store-review';
 import IAPService from '../../services/IAPService';
 import Constants from 'expo-constants';
+import { isGuestSession, clearGuestSession } from '../../src/utils/guestSession';
+import { getGuestPurchase } from '../../src/utils/guestPurchaseStorage';
 
 export default function ProfileScreen() {
   const storeUrl = Platform.OS === 'android'
@@ -314,7 +316,9 @@ export default function ProfileScreen() {
   const loadUserData = async () => {
     try {
       // Check if we're in guest mode first
-      if ((global as any)?.isGuestMode) {
+      const isGuest = await isGuestSession();
+
+      if (isGuest) {
         // Set guest data without any API calls
         setUser({
           email: 'Guest',
@@ -326,7 +330,36 @@ export default function ProfileScreen() {
         setEditForm({
           name: 'Guest User'
         });
-        setCurrentPlan('Free');
+
+        // Load guest purchase info
+        const guestPurchase = await getGuestPurchase();
+        if (guestPurchase) {
+          const planNames = {
+            weekly: 'Weekly Plan',
+            monthly: 'Monthly Plan',
+            yearly: 'Yearly Plan'
+          };
+          setCurrentPlan(planNames[guestPurchase.plan] || 'Free');
+          setSubscriptionDisplay({
+            plan: planNames[guestPurchase.plan] || 'Free Plan',
+            price: guestPurchase.plan === 'weekly' ? '$2.99/week' :
+                   guestPurchase.plan === 'monthly' ? '$5.99/month' :
+                   guestPurchase.plan === 'yearly' ? '$59.99/year' : '$0.00',
+            renewalDate: null,
+            status: 'active',
+            isCancelled: false
+          });
+        } else {
+          setCurrentPlan('Free');
+          setSubscriptionDisplay({
+            plan: 'Free Plan',
+            price: '$0.00',
+            renewalDate: null,
+            status: 'free',
+            isCancelled: false
+          });
+        }
+
         setIsLoading(false);
         return;
       }
@@ -434,8 +467,8 @@ export default function ProfileScreen() {
   const handleSignOut = async () => {
     try {
       if (user?.isGuest) {
-        // Clear guest mode
-        (global as any).isGuestMode = false;
+        // Clear guest session
+        await clearGuestSession();
       } else {
         await signOut();
       }
