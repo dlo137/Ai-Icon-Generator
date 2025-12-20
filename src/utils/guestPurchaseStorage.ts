@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const GUEST_PURCHASE_KEY = 'guest_purchase';
 
-export type SubscriptionPlan = 'weekly' | 'monthly' | 'yearly';
+export type SubscriptionPlan = 'starter' | 'value' | 'pro';
 
 export interface GuestPurchase {
   plan: SubscriptionPlan;

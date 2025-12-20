@@ -31,9 +31,10 @@ interface GeneratedThumbnailProps {
     scale: number;
     rotation: number;
   };
+  variationBadge?: string;
 }
 
-export default function GeneratedThumbnail({ imageUrl, prompt, onEdit, style, textOverlay }: GeneratedThumbnailProps) {
+export default function GeneratedThumbnail({ imageUrl, prompt, onEdit, style, textOverlay, variationBadge }: GeneratedThumbnailProps) {
   const downloadThumbnail = async () => {
     if (!imageUrl) {
       Alert.alert('Error', 'No thumbnail to download');
@@ -111,6 +112,33 @@ export default function GeneratedThumbnail({ imageUrl, prompt, onEdit, style, te
                 }}
               >
                 {textOverlay.text}
+              </Text>
+            </View>
+          )}
+
+          {/* Variation badge display */}
+          {variationBadge && (
+            <View
+              style={{
+                position: 'absolute',
+                top: 8,
+                left: 8,
+                backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                borderRadius: 12,
+                paddingHorizontal: 8,
+                paddingVertical: 4,
+                zIndex: 10,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 12,
+                  fontWeight: 'bold',
+                  color: '#ffffff',
+                  textAlign: 'center',
+                }}
+              >
+                {variationBadge}
               </Text>
             </View>
           )}

@@ -26,7 +26,6 @@ const uploadImageToStorage = async (imageUri: string, fileName: string): Promise
 
     if (isGuest) {
       // For guests, return local URI (no Supabase upload)
-      console.log('[Upload] Guest mode - using local storage only');
       return imageUri;
     }
 
@@ -35,7 +34,6 @@ const uploadImageToStorage = async (imageUri: string, fileName: string): Promise
 
     // Handle session errors gracefully
     if (error) {
-      console.error('Session error in uploadImageToStorage:', error.message);
       return null;
     }
 
@@ -360,7 +358,6 @@ export default function GenerateScreen() {
       Alert.alert('Success', 'Icon saved to your photo library!');
 
     } catch (error) {
-      console.error('Download error:', error);
       Alert.alert('Error', 'Failed to save icon. Please try again.');
     }
   };
@@ -1092,21 +1089,21 @@ export default function GenerateScreen() {
           try {
             await addThumbnailToHistory(promptToUse, url1);
           } catch (historyError) {
-            console.log('Skipping history save for url1 (not authenticated):', historyError);
+            // Silently skip history save if not authenticated
           }
         }
         if (url2) {
           try {
             await addThumbnailToHistory(promptToUse, url2);
           } catch (historyError) {
-            console.log('Skipping history save for url2 (not authenticated):', historyError);
+            // Silently skip history save if not authenticated
           }
         }
         if (url3) {
           try {
             await addThumbnailToHistory(promptToUse, url3);
           } catch (historyError) {
-            console.log('Skipping history save for url3 (not authenticated):', historyError);
+            // Silently skip history save if not authenticated
           }
         }
 
@@ -1146,7 +1143,7 @@ export default function GenerateScreen() {
         try {
           await addThumbnailToHistory(promptToUse, imageUrl);
         } catch (historyError) {
-          console.log('Skipping history save (not authenticated):', historyError);
+          // Silently skip history save if not authenticated
         }
 
         const newGeneration = {
@@ -1580,7 +1577,7 @@ export default function GenerateScreen() {
               <Text style={styles.closeIcon}>✕</Text>
             </TouchableOpacity>
             <View style={styles.modalCreditsContainer}>
-              <Text style={styles.modalCreditsText}>{credits.current}/{credits.max} images</Text>
+              <Text style={styles.modalCreditsText}>{credits.current}/{credits.max} icons</Text>
             </View>
           </View>
 
@@ -2111,14 +2108,13 @@ export default function GenerateScreen() {
                         if (currentGeneration) {
                           // Use originalModalImageUrl (the remote URL) for syncing
                           const urlToSave = originalModalImageUrl || modalImageUrl;
-                          console.log('[ADD TO HISTORY] Adding thumbnail with URL:', urlToSave.substring(0, 60));
                           // Save to history with text overlay
                           try {
                             await addThumbnailToHistory(currentGeneration.prompt, urlToSave, {
                               textOverlay: textOverlay
                             });
                           } catch (historyError) {
-                            console.log('Skipping history save (not authenticated):', historyError);
+                            // Silently skip history save if not authenticated
                           }
                         }
 
@@ -2287,7 +2283,6 @@ export default function GenerateScreen() {
                           // Use originalModalImageUrl (the remote URL) for syncing, not the edited local path
                           // This ensures cross-device sync works correctly
                           const urlToSave = originalModalImageUrl || modalImageUrl;
-                          console.log('[SAVE] Saving icon with URL:', urlToSave.substring(0, 60));
                           await saveThumbnail(currentGeneration.prompt, urlToSave, editsToSave);
                           Alert.alert('Saved!', 'Icon saved to your history');
                         } else {

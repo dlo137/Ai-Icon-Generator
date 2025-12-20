@@ -8,15 +8,21 @@ import { useModal } from '../../src/contexts/ModalContext';
 import { supabase } from '../../lib/supabase';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getSubscriptionInfo, SubscriptionInfo, getCredits, CreditsInfo } from '../../src/utils/subscriptionStorage';
-import { getSubscriptionInfo as getSupabaseSubscriptionInfo, changePlan, cancelSubscription } from '../../src/features/subscription/api';
+import { getSubscriptionInfo as getSupabaseSubscriptionInfo, cancelSubscription } from '../../src/features/subscription/api';
 import type { SubscriptionPlan } from '../../src/features/subscription/plans';
-import * as StoreReview from 'expo-store-review';
 import IAPService from '../../services/IAPService';
 import Constants from 'expo-constants';
-import { isGuestSession, clearGuestSession } from '../../src/utils/guestSession';
-import { getGuestPurchase } from '../../src/utils/guestPurchaseStorage';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as FileSystem from 'expo-file-system/legacy';
+import { isGuestSession, clearGuestSession, getGuestSession } from '../../src/utils/guestSession';
+import { getGuestPurchase, clearGuestPurchase } from '../../src/utils/guestPurchaseStorage';
+import { useCredits } from '../../src/contexts/CreditsContext';
+import { clearGuestCredits } from '../../src/utils/guestCredits';
 
 export default function ProfileScreen() {
+  // Hard deletion guard to prevent recreation and repeated deletes
+  const isDeletingRef = useRef(false);
+  
   const storeUrl = Platform.OS === 'android'
     ? 'https://play.google.com/store/apps/details?id=com.watsonsweb.icongenerator'
     : 'https://apps.apple.com/app/id6755940269?action=write-review';
@@ -31,7 +37,7 @@ export default function ProfileScreen() {
   const [currentPlan, setCurrentPlan] = useState('Free');
   const [credits, setCredits] = useState<CreditsInfo>({ current: 100, max: 100 });
   const [subscriptionDisplay, setSubscriptionDisplay] = useState({
-    plan: 'Free Plan',
+    plan: 'Free',
     price: '$0.00',
     renewalDate: null as string | null,
     status: 'free',
@@ -47,8 +53,7 @@ export default function ProfileScreen() {
     isBillingManagementModalVisible,
     setIsBillingManagementModalVisible,
   } = useModal();
-  const [selectedPlan, setSelectedPlan] = useState('yearly');
-  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const [selectedPlan, setSelectedPlan] = useState('pro');
   const [contactForm, setContactForm] = useState({
     name: '',
     email: '',
@@ -56,20 +61,26 @@ export default function ProfileScreen() {
     message: ''
   });
   const router = useRouter();
+  const { refreshCredits } = useCredits();
   const [products, setProducts] = useState<any[]>([]);
   const [iapReady, setIapReady] = useState(false);
   const [loadingProducts, setLoadingProducts] = useState(false);
-  const [currentPurchaseAttempt, setCurrentPurchaseAttempt] = useState<'monthly' | 'yearly' | 'weekly' | null>(null);
+  const [currentPurchaseAttempt, setCurrentPurchaseAttempt] = useState<'starter' | 'value' | 'pro' | null>(null);
 
   // Platform-specific product IDs - must match App Store Connect / Google Play Console
   const PRODUCT_IDS = Platform.OS === 'ios' ? {
-    yearly: 'ai.icons.yearly',
-    monthly: 'ai.icons.monthly',
-    weekly: 'ai.icons.weekly',
+    starter: 'starter.15',
+    value: 'value.45',
+    pro: 'pro.120',
   } : {
-    yearly: 'ai.icons.yearly',
-    monthly: 'ai.icons.monthly',
-    weekly: 'ai.icons.weekly',
+    starter: 'starter.15',
+    value: 'value.45',
+    pro: 'pro.120',
+  };
+
+  // Helper function to format price - always use fallback to show consistent format
+  const formatPrice = (fallbackPrice: string) => {
+    return fallbackPrice;
   };
 
   const isIAPAvailable = IAPService.isAvailable();
@@ -78,9 +89,9 @@ export default function ProfileScreen() {
   const isExpoGo = Constants.appOwnership === 'expo';
 
   const settings = [
+    { id: 'upgrade', title: 'AI Icon Packs', subtitle: 'Purchase more AI Icons' },
     { id: 'about', title: 'About', subtitle: 'App information' },
-    { id: 'upgrade', title: 'Plans', subtitle: 'Choose a subscription plan' },
-    { id: 'billing', title: 'Billing & Subscription', subtitle: 'Manage your current subscription' },
+    { id: 'billing', title: 'Purchase History', subtitle: 'View your last purchase' },
     // Only show rate button on iOS
     // ...(Platform.OS === 'ios' ? [{
     //   id: 'rate',
@@ -91,28 +102,28 @@ export default function ProfileScreen() {
 
   const subscriptionPlans = [
     {
-      id: 'weekly',
-      name: 'Weekly',
-      price: '$2.99/week',
-      billingPrice: '$2.99',
-      imageLimit: '10 images per week',
-      description: 'Billed weekly at $2.99.\nCancel anytime'
+      id: 'starter',
+      name: 'Starter',
+      price: '$1.99',
+      billingPrice: '$1.99',
+      imageLimit: '15 AI Icons',
+      description: 'One-time purchase.\nNo auto-renewal'
     },
     {
-      id: 'monthly',
-      name: 'Monthly',
-      price: '$5.99/month',
+      id: 'value',
+      name: 'Value',
+      price: '$5.99',
       billingPrice: '$5.99',
-      imageLimit: '75 images per month',
-      description: 'Billed monthly at $5.99.\nCancel anytime'
+      imageLimit: '45 AI Icons',
+      description: 'One-time purchase.\nNo auto-renewal'
     },
     {
-      id: 'yearly',
-      name: 'Yearly',
-      price: '$59.99/year',
-      billingPrice: '$59.99',
-      imageLimit: '90 images per month',
-      description: 'Billed yearly at $59.99.\nCancel anytime'
+      id: 'pro',
+      name: 'Pro',
+      price: '$14.99',
+      billingPrice: '$14.99',
+      imageLimit: '120 AI Icons',
+      description: 'One-time purchase.\nNo auto-renewal'
     }
   ];
 
@@ -126,15 +137,15 @@ export default function ProfileScreen() {
       let price = '';
       let planName = currentPlan;
 
-      if (supabaseSubInfo.subscription_plan === 'yearly') {
-        price = '$59.99/year';
-        planName = 'Yearly Plan';
-      } else if (supabaseSubInfo.subscription_plan === 'monthly') {
-        price = '$5.99/month';
-        planName = 'Monthly Plan';
-      } else if (supabaseSubInfo.subscription_plan === 'weekly') {
-        price = '$2.99/week';
-        planName = 'Weekly Plan';
+      if (supabaseSubInfo.subscription_plan === 'pro') {
+        price = '$14.99';
+        planName = 'Pro';
+      } else if (supabaseSubInfo.subscription_plan === 'value') {
+        price = '$5.99';
+        planName = 'Value';
+      } else if (supabaseSubInfo.subscription_plan === 'starter') {
+        price = '$1.99';
+        planName = 'Starter';
       }
 
       return {
@@ -148,7 +159,7 @@ export default function ProfileScreen() {
     // Fallback to local storage
     if (!subscriptionInfo || !subscriptionInfo.isActive) {
       return {
-        plan: 'Free Plan',
+        plan: 'Free',
         price: '$0.00',
         renewalDate: null,
         status: 'free'
@@ -158,12 +169,15 @@ export default function ProfileScreen() {
     let price = '';
     let planName = currentPlan;
 
-    if (subscriptionInfo.productId === 'icon.yearly') {
-      price = '$59.99/year';
-    } else if (subscriptionInfo.productId === 'icon.monthly') {
-      price = '$5.99/month';
-    } else if (subscriptionInfo.productId === 'icon.weekly') {
-      price = '$2.99/week';
+    if (subscriptionInfo.productId === 'pro.120') {
+      price = '$14.99';
+      planName = 'Pro';
+    } else if (subscriptionInfo.productId === 'value.45') {
+      price = '$5.99';
+      planName = 'Value';
+    } else if (subscriptionInfo.productId === 'starter.15') {
+      price = '$1.99';
+      planName = 'Starter';
     }
 
     return {
@@ -195,7 +209,7 @@ export default function ProfileScreen() {
   );
 
   // IAP callback handler for purchase events
-  const handleIAPCallback = useCallback((info: any) => {
+  const handleIAPCallback = useCallback(async (info: any) => {
     console.log('[PROFILE] IAP Callback:', info);
 
     // Handle successful purchase
@@ -204,11 +218,17 @@ export default function ProfileScreen() {
       setCurrentPurchaseAttempt(null);
       setIsBillingModalVisible(false);
 
-      // Reload user data after successful purchase
-      setTimeout(async () => {
+      // Immediately refresh credits and user data
+      try {
+        console.log('[PROFILE] Refreshing credits immediately...');
+        await refreshCredits();
         await loadUserData();
-        Alert.alert('Success!', 'Your subscription has been activated. Thank you for subscribing!');
-      }, 1000);
+        console.log('[PROFILE] Credits and user data refreshed successfully');
+        
+        Alert.alert('Success!', 'Your credits have been added. Thank you for your purchase!');
+      } catch (error) {
+        console.error('[PROFILE] Error refreshing data after purchase:', error);
+      }
     }
 
     // Handle purchase errors/cancellations
@@ -216,7 +236,7 @@ export default function ProfileScreen() {
       console.log('[PROFILE] Purchase cancelled or failed');
       setCurrentPurchaseAttempt(null);
     }
-  }, []);
+  }, [refreshCredits, loadUserData]);
 
   const initializeIAP = async () => {
     if (!isIAPAvailable) {
@@ -254,7 +274,15 @@ export default function ProfileScreen() {
   const fetchProducts = async (showErrors = false) => {
     if (!isIAPAvailable) {
       if (showErrors) {
-        Alert.alert('IAP Unavailable', 'In-app purchases are not available on this platform.');
+        Alert.alert(
+          'Setup Required',
+          'In-app purchases are not available.\n\n' +
+          'To test IAP:\n' +
+          '• Use Expo Go for simulated purchases, OR\n' +
+          '• Build the app and set up products in App Store Connect\n\n' +
+          'Note: Consumable products must be created in App Store Connect before they can be purchased.',
+          [{ text: 'OK' }]
+        );
       }
       return [];
     }
@@ -272,19 +300,22 @@ export default function ProfileScreen() {
       } else {
         setProducts([]);
         console.warn('[PROFILE] ⚠️ No products returned from App Store!');
-        console.warn('[PROFILE] Expected product IDs:', ['ai.icons.yearly', 'ai.icons.monthly', 'ai.icons.weekly']);
+        console.warn('[PROFILE] Expected product IDs:', ['starter.15', 'value.45', 'pro.120']);
         console.warn('[PROFILE] Make sure products are created in App Store Connect and approved for testing');
 
         if (showErrors) {
           Alert.alert(
-            'No Products Found',
-            'Could not load any subscription products.\n\n' +
-            'Possible causes:\n' +
-            '• Products not created in App Store Connect\n' +
-            '• Bundle ID mismatch\n' +
-            '• Paid Apps Agreement not signed\n\n' +
-            'Check the console logs for detailed error information.',
-            [{ text: 'OK' }]
+            'Products Not Set Up',
+            'Could not load any credit packs.\n\n' +
+            'Next Steps:\n' +
+            '1. Create consumable IAP products in App Store Connect:\n' +
+            '   • starter.15 ($1.99 - 15 AI Icons)\n' +
+            '   • value.45 ($5.99 - 45 AI Icons)\n' +
+            '   • pro.120 ($14.99 - 120 AI Icons)\n\n' +
+            '2. Submit your app for review\n\n' +
+            '3. Products will appear after approval\n\n' +
+            'For testing: Use Expo Go to simulate purchases without App Store setup.',
+            [{ text: 'Got It' }]
           );
         }
         return [];
@@ -315,36 +346,57 @@ export default function ProfileScreen() {
 
   const loadUserData = async () => {
     try {
-      // Check if we're in guest mode first
+      // FIX #2: Disable guest bootstrap when deleting
       const isGuest = await isGuestSession();
 
-      if (isGuest) {
-        // Set guest data without any API calls
+      if (isGuest && !isDeletingRef.current) {
+        // Fetch guest profile from Supabase to get the unique guest name
+        const guestSession = await getGuestSession();
+
+        let guestName = 'Guest User'; // Default fallback
+
+        if (guestSession?.supabaseUserId) {
+          // Fetch the guest's profile from Supabase
+          const { data: guestProfile, error: profileError } = await supabase
+            .from('profiles')
+            .select('name')
+            .eq('id', guestSession.supabaseUserId)
+            .single();
+
+          if (!profileError && guestProfile?.name) {
+            guestName = guestProfile.name;
+            console.log('[PROFILE] Loaded guest name from Supabase:', guestName);
+          } else {
+            console.log('[PROFILE] Could not load guest name, using default');
+          }
+        }
+
+        // Set guest data with fetched name
         setUser({
-          email: 'Guest',
+          email: guestName,
           isGuest: true
         });
         setProfile({
-          name: 'Guest User'
+          name: guestName
         });
         setEditForm({
-          name: 'Guest User'
+          name: guestName
         });
 
         // Load guest purchase info
         const guestPurchase = await getGuestPurchase();
         if (guestPurchase) {
-          const planNames = {
-            weekly: 'Weekly Plan',
-            monthly: 'Monthly Plan',
-            yearly: 'Yearly Plan'
+          const planNames: Record<string, string> = {
+            starter: 'Starter',
+            value: 'Value',
+            pro: 'Pro'
           };
           setCurrentPlan(planNames[guestPurchase.plan] || 'Free');
           setSubscriptionDisplay({
-            plan: planNames[guestPurchase.plan] || 'Free Plan',
-            price: guestPurchase.plan === 'weekly' ? '$2.99/week' :
-                   guestPurchase.plan === 'monthly' ? '$5.99/month' :
-                   guestPurchase.plan === 'yearly' ? '$59.99/year' : '$0.00',
+            plan: planNames[guestPurchase.plan] || 'Free',
+            price: guestPurchase.plan === 'starter' ? '$1.99' :
+                   guestPurchase.plan === 'value' ? '$5.99' :
+                   guestPurchase.plan === 'pro' ? '$14.99' : '$0.00',
             renewalDate: null,
             status: 'active',
             isCancelled: false
@@ -352,7 +404,7 @@ export default function ProfileScreen() {
         } else {
           setCurrentPlan('Free');
           setSubscriptionDisplay({
-            plan: 'Free Plan',
+            plan: 'Free',
             price: '$0.00',
             renewalDate: null,
             status: 'free',
@@ -398,18 +450,19 @@ export default function ProfileScreen() {
         let planName = '';
         let price = '';
 
-        if (plan === 'yearly') {
-          planName = 'Yearly Plan';
-          price = '$59.99/year';
-        } else if (plan === 'monthly') {
-          planName = 'Monthly Plan';
-          price = '$5.99/month';
-        } else if (plan === 'weekly') {
-          planName = 'Weekly Plan';
-          price = '$2.99/week';
+        if (plan === 'pro') {
+          planName = 'Pro';
+          price = '$14.99';
+        } else if (plan === 'value') {
+          planName = 'Value';
+          price = '$5.99';
+        } else if (plan === 'starter') {
+          planName = 'Starter';
+          price = '$1.99';
         } else {
-          planName = 'Pro Plan';
-          price = '$0.00';
+          // Fallback: use price from database if available
+          planName = 'Pro';
+          price = supabaseSubInfo.price ? `$${supabaseSubInfo.price.toFixed(2)}` : '$0.00';
         }
 
         setCurrentPlan(planName);
@@ -425,18 +478,19 @@ export default function ProfileScreen() {
         let planName = '';
         let price = '';
 
-        if (subInfo.productId === 'icon.yearly') {
-          planName = 'Yearly Plan';
-          price = '$59.99/year';
-        } else if (subInfo.productId === 'icon.monthly') {
-          planName = 'Monthly Plan';
-          price = '$5.99/month';
-        } else if (subInfo.productId === 'icon.weekly') {
-          planName = 'Weekly Plan';
-          price = '$2.99/week';
+        if (subInfo.productId === 'pro.120') {
+          planName = 'Pro';
+          price = '$14.99';
+        } else if (subInfo.productId === 'value.45') {
+          planName = 'Value';
+          price = '$5.99';
+        } else if (subInfo.productId === 'starter.15') {
+          planName = 'Starter';
+          price = '$1.99';
         } else {
-          planName = 'Pro Plan';
-          price = '$0.00';
+          // Fallback to Pro
+          planName = 'Pro';
+          price = '$14.99';
         }
 
         setCurrentPlan(planName);
@@ -450,7 +504,7 @@ export default function ProfileScreen() {
       } else {
         setCurrentPlan('Free');
         setSubscriptionDisplay({
-          plan: 'Free Plan',
+          plan: 'Free',
           price: '$0.00',
           renewalDate: null,
           status: 'free',
@@ -466,16 +520,49 @@ export default function ProfileScreen() {
 
   const handleSignOut = async () => {
     try {
-      if (user?.isGuest) {
-        // Clear guest session
-        await clearGuestSession();
-      } else {
-        await signOut();
+      // Show success alert immediately
+      Alert.alert(
+        'Signed Out Successfully',
+        'You have been signed out of your account.',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              router.replace('/');
+            }
+          }
+        ]
+      );
+
+      // Do the actual sign out in the background (don't block UX)
+      try {
+        // Check if we're in guest mode directly from guest session
+        const isGuest = await isGuestSession();
+
+        if (isGuest) {
+          await clearGuestSession();
+        } else {
+          await signOut();
+        }
+      } catch (backgroundError) {
+        // Don't show error to user - they're already being signed out
       }
-      router.push('/');
+
     } catch (error) {
-      console.error('Sign out error:', error);
-      Alert.alert('Error', 'Failed to sign out');
+      // Even if there's an error, still show success and redirect
+      Alert.alert(
+        'Signed Out',
+        'You have been signed out.',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              console.log('[PROFILE] Redirecting to onboarding after error...');
+              router.replace('/');
+            }
+          }
+        ]
+      );
     }
   };
 
@@ -492,46 +579,175 @@ export default function ProfileScreen() {
   };
 
   const handleDeleteAccount = async () => {
+    const isGuest = user?.isGuest || false;
+
     Alert.alert(
       'Delete Account',
-      'Are you sure you want to permanently delete your account? This action cannot be undone and all your data will be lost.',
+      isGuest
+        ? 'Are you sure you want to delete your guest data? This will remove all your saved icons and credits.'
+        : 'Are you sure you want to permanently delete your account? This action cannot be undone and all your data will be lost.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete Account',
           style: 'destructive',
-          onPress: () => {
-            Alert.alert(
-              'Final Confirmation',
-              'This will permanently delete your account and all associated data. Type "DELETE" to confirm.',
-              [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                  text: 'Confirm Delete',
-                  style: 'destructive',
-                  onPress: async () => {
-                    try {
-                      // Delete the account from Supabase
-                      await deleteAccount();
+          onPress: async () => {
+            // Always reset deletion flag and redirect, no matter what happens
+            const forceRedirect = () => {
+              isDeletingRef.current = false;
+              router.dismissAll();
+              if (router.reset) {
+                router.reset({
+                  index: 0,
+                  routes: [{ name: 'index' }],
+                });
+              } else {
+                router.replace('/');
+              }
+              console.log('[DELETE] Force redirect executed');
+            };
 
-                      // Redirect to index
-                      router.replace('/');
-
-                      // Show confirmation after redirect
-                      setTimeout(() => {
-                        Alert.alert(
-                          'Account Deleted',
-                          'Your account has been permanently deleted.'
-                        );
-                      }, 500);
-                    } catch (error) {
-                      console.error('Delete account error:', error);
-                      Alert.alert('Error', 'Failed to delete account. Please try again or contact support.');
-                    }
-                  }
+            try {
+              // FIX #1: Hard isDeletingAccount guard
+              if (isDeletingRef.current) {
+                console.log('[DELETE] Deletion already in progress — aborting');
+                return;
+              }
+              
+              isDeletingRef.current = true;
+              
+              if (isGuest) {
+                console.log('[DELETE] Starting guest account deletion...');
+                
+                // Step 1: Get user ID while session exists
+                const { data: { user } } = await supabase.auth.getUser();
+                
+                if (!user) {
+                  console.log('[DELETE] No authenticated user — aborting but still redirecting');
+                  forceRedirect();
+                  return;
                 }
-              ]
-            );
+
+                const userId = user.id;
+                console.log('[DELETE] Found authenticated user ID:', userId);
+
+                // Step 2: Delete profile from database
+                console.log('[DELETE] Deleting profile from database...');
+                const { error: deleteError } = await supabase
+                  .from('profiles')
+                  .delete()
+                  .eq('id', userId);
+
+                if (deleteError) {
+                  console.error('[DELETE] Error deleting profile:', deleteError);
+                  // Still redirect even if deletion failed
+                  forceRedirect();
+                  Alert.alert('Partial Deletion', 'Some data may not have been deleted, but you have been signed out.');
+                  return;
+                }
+                
+                console.log('[DELETE] Profile deleted successfully from database');
+
+                // Step 3: Delete auth user via Edge Function (get session first)
+                console.log('[DELETE] Getting session for Edge Function...');
+                const { data: sessionData } = await supabase.auth.getSession();
+                const accessToken = sessionData.session?.access_token;
+                
+                if (accessToken) {
+                  console.log('[DELETE] Calling delete-user Edge Function...');
+                  try {
+                    const { data: deleteUserData, error: deleteUserError } = await supabase.functions.invoke('delete-user', {
+                      headers: {
+                        Authorization: `Bearer ${accessToken}`
+                      }
+                    });
+
+                    if (deleteUserError) {
+                      console.error('[DELETE] Error calling delete-user function:', deleteUserError);
+                    } else {
+                      console.log('[DELETE] Auth user deletion response:', deleteUserData);
+                    }
+                  } catch (edgeFunctionError) {
+                    console.error('[DELETE] Edge function call failed:', edgeFunctionError);
+                  }
+                } else {
+                  console.log('[DELETE] No access token found, skipping auth user deletion');
+                }
+
+                // Step 4: Clear local data
+                console.log('[DELETE] Clearing local data...');
+                await clearGuestSession();
+                await clearGuestCredits();
+                await clearGuestPurchase();
+                await AsyncStorage.removeItem('saved_thumbnails');
+                await AsyncStorage.removeItem('hasCompletedOnboarding');
+
+                // Delete thumbnail files
+                console.log('[DELETE] Deleting thumbnail files...');
+                const thumbnailDir = `${FileSystem.documentDirectory}thumbnails/`;
+                const dirInfo = await FileSystem.getInfoAsync(thumbnailDir);
+                if (dirInfo.exists) {
+                  await FileSystem.deleteAsync(thumbnailDir, { idempotent: true });
+                }
+
+                // Step 5: REDIRECT FIRST - before signOut can cause issues
+                console.log('[DELETE] Forcing hard navigation reset BEFORE signout...');
+                forceRedirect();
+
+                // Step 6: Sign out AFTER navigation
+                console.log('[DELETE] Signing out...');
+                await supabase.auth.signOut();
+
+                // Show success message AFTER navigation
+                setTimeout(() => {
+                  Alert.alert(
+                    'Account Deleted',
+                    'All your data has been removed successfully.',
+                    [{ text: 'OK' }]
+                  );
+                }, 500);
+                
+                console.log('[DELETE] Deletion process completed');
+              } else {
+                console.log('[DELETE] Starting authenticated user deletion...');
+                // Handle authenticated user deletion
+
+                // Delete the account (also signs out)
+                await deleteAccount();
+
+                // Clear onboarding flag so they see onboarding again
+                await AsyncStorage.removeItem('hasCompletedOnboarding');
+
+                // Redirect to onboarding screen
+                router.dismissAll();
+                router.replace('/(tabs)/../index');
+
+                // Show confirmation after redirect
+                setTimeout(() => {
+                  Alert.alert(
+                    'Account Deleted',
+                    'Your account has been permanently deleted.'
+                  );
+                }, 800);
+              }
+            } catch (error) {
+              // ALWAYS redirect no matter what error occurs
+              console.error('[DELETE] Delete account error:', error);
+              
+              // Force redirect even on error
+              isDeletingRef.current = false;
+              router.dismissAll();
+              if (router.reset) {
+                router.reset({
+                  index: 0,
+                  routes: [{ name: 'index' }],
+                });
+              } else {
+                router.replace('/');
+              }
+              
+              Alert.alert('Error', `Failed to delete account: ${error?.message || 'Unknown error'}. You have been signed out.`);
+            }
           }
         }
       ]
@@ -595,7 +811,7 @@ export default function ProfileScreen() {
 
   const simulateUpgradeInExpoGo = async (planId: string) => {
     try {
-      console.log('[EXPO GO] Simulating upgrade for plan:', planId);
+      console.log('[EXPO GO] Simulating consumable purchase for plan:', planId);
 
       // Get current user
       const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -605,303 +821,120 @@ export default function ProfileScreen() {
 
       console.log('[EXPO GO] User ID:', user.id);
 
-      // Determine credits based on plan
-      let credits_max = 0;
+      // Get current credits to add to them
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('credits_current, credits_max')
+        .eq('id', user.id)
+        .single();
+
+      const currentCredits = profileData?.credits_current || 0;
+      const currentMax = profileData?.credits_max || 0;
+
+      // Determine credits to add based on consumable pack
+      let creditsToAdd = 0;
       switch (planId) {
-        case 'yearly': credits_max = 90; break;
-        case 'monthly': credits_max = 75; break;
-        case 'weekly': credits_max = 10; break;
+        case 'pro': creditsToAdd = 120; break;
+        case 'value': creditsToAdd = 45; break;
+        case 'starter': creditsToAdd = 15; break;
       }
 
-      // Update profile with subscription data
-      console.log('[EXPO GO] Updating profile with subscription data...');
+      const newTotal = currentCredits + creditsToAdd;
+      // Always increase max to accommodate new total if needed
+      const newMax = Math.max(currentMax, newTotal);
+
+      console.log('[EXPO GO] Current credits:', currentCredits, 'Current max:', currentMax);
+      console.log('[EXPO GO] Adding', creditsToAdd, 'credits');
+      console.log('[EXPO GO] New total:', newTotal, 'New max:', newMax);
+
+      // Update profile - ADD credits (consumable model)
       const { error: updateError } = await supabase
         .from('profiles')
         .update({
           subscription_plan: planId,
           is_pro_version: true,
-          subscription_id: `test_${planId}_${Date.now()}`,
+          subscription_id: `expo_go_${planId}_${Date.now()}`,
           purchase_time: new Date().toISOString(),
-          credits_current: credits_max,
-          credits_max: credits_max,
-          last_credit_reset: new Date().toISOString()
+          credits_current: newTotal,
+          credits_max: newMax, // Pack size, or current if current > pack size
         })
         .eq('id', user.id);
 
       if (updateError) throw updateError;
 
-      console.log('[EXPO GO] Simulated upgrade successful!');
+      console.log('[EXPO GO] Simulated consumable purchase successful!');
 
       // Close modals and reload data
       setIsBillingModalVisible(false);
       setIsBillingManagementModalVisible(false);
 
-      // Wait a moment for database to update, then reload
-      console.log('[EXPO GO] Reloading user data...');
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      await loadUserData();
-      console.log('[EXPO GO] User data reloaded');
+      // Immediately refresh credits in header and profile data
+      console.log('[EXPO GO] Refreshing credits and user data...');
+      await Promise.all([
+        refreshCredits(),
+        loadUserData()
+      ]);
+      console.log('[EXPO GO] Credits and user data refreshed successfully');
 
       // Show success message
       Alert.alert(
         'Success (Expo Go Simulation)',
-        `Your plan has been upgraded to ${planId}!\n\nNote: This is a simulated upgrade for testing in Expo Go.`,
+        `${creditsToAdd} AI Icons added! New total: ${newTotal}/${newMax} AI Icons\n\nNote: This is a simulated purchase for testing in Expo Go.`,
         [{ text: 'OK' }]
       );
     } catch (error: any) {
-      console.error('[EXPO GO] Simulated upgrade error:', error);
-      Alert.alert('Error', error.message || 'Failed to simulate upgrade');
+      console.error('[EXPO GO] Simulated purchase error:', error);
+      Alert.alert('Error', error.message || 'Failed to simulate purchase');
     }
   };
 
   const handleSubscribe = async (planId: string) => {
-    const plan = subscriptionPlans.find(p => p.id === planId);
-    if (!plan) return;
-
-    try {
-      // Check if user already has an active subscription
-      const hasActiveSub = subscriptionDisplay.status === 'active';
-
-      if (hasActiveSub) {
-        // This is a plan change (upgrade or downgrade)
-        const currentPlanType = subscriptionDisplay.plan.toLowerCase();
-
-        // Determine if this is a downgrade or upgrade
-        const planHierarchy = { weekly: 1, monthly: 2, yearly: 3 };
-        let currentPlanLevel = 0;
-        if (currentPlanType.includes('yearly')) currentPlanLevel = 3;
-        else if (currentPlanType.includes('monthly')) currentPlanLevel = 2;
-        else if (currentPlanType.includes('weekly')) currentPlanLevel = 1;
-
-        const newPlanLevel = planHierarchy[planId as keyof typeof planHierarchy];
-        const isDowngrade = newPlanLevel < currentPlanLevel;
-        const isUpgrade = newPlanLevel > currentPlanLevel;
-
-        if (isUpgrade) {
-          // Upgrade - requires payment through IAP
-          Alert.alert(
-            'Upgrade Plan',
-            `Upgrading to ${plan.name} requires a new purchase. You will be charged ${plan.billingPrice} now and your current subscription will be cancelled.`,
-            [
-              { text: 'Cancel', style: 'cancel' },
-              {
-                text: 'Proceed to Payment',
-                onPress: async () => {
-                  // If running in Expo Go, simulate the upgrade
-                  if (isExpoGo) {
-                    await simulateUpgradeInExpoGo(planId);
-                    return;
-                  }
-
-                  // Trigger IAP purchase flow for upgrade
-                  if (!isIAPAvailable) {
-                    if (__DEV__) {
-                      Alert.alert(
-                        'Development Mode',
-                        'IAP is not available. Would you like to simulate a successful upgrade for testing?',
-                        [
-                          { text: 'Cancel', style: 'cancel' },
-                          {
-                            text: 'Simulate Upgrade',
-                            onPress: async () => {
-                              try {
-                                const { data: { user }, error: userError } = await supabase.auth.getUser();
-                                if (userError || !user) throw new Error('User not authenticated');
-
-                                let credits_max = 0;
-                                switch (planId) {
-                                  case 'yearly': credits_max = 90; break;
-                                  case 'monthly': credits_max = 75; break;
-                                  case 'weekly': credits_max = 10; break;
-                                }
-
-                                const { error: updateError } = await supabase
-                                  .from('profiles')
-                                  .update({
-                                    subscription_plan: planId,
-                                    is_pro_version: true,
-                                    subscription_id: `test_${planId}_${Date.now()}`,
-                                    purchase_time: new Date().toISOString(),
-                                    credits_current: credits_max,
-                                    credits_max: credits_max,
-                                    last_credit_reset: new Date().toISOString()
-                                  })
-                                  .eq('id', user.id);
-
-                                if (updateError) throw updateError;
-
-                                setIsBillingModalVisible(false);
-
-                                // Wait a moment for database to update, then reload
-                                console.log('[DEV MODE] Reloading user data...');
-                                await new Promise(resolve => setTimeout(resolve, 1000));
-                                await loadUserData();
-                                console.log('[DEV MODE] User data reloaded');
-
-                                Alert.alert('Success (Simulated)', 'Your plan has been upgraded (development mode).');
-                              } catch (error) {
-                                console.error('Test upgrade error:', error);
-                                Alert.alert('Error', 'Failed to upgrade plan.');
-                              }
-                            }
-                          }
-                        ]
-                      );
-                    } else {
-                      Alert.alert('Purchases Unavailable', 'In-app purchases are only available on physical devices.');
-                    }
-                    return;
-                  }
-
-                  // Always fetch products fresh to ensure we have the latest
-                  console.log('[PROFILE-UPGRADE] Fetching products...');
-                  const list = await fetchProducts(true);
-                  const productId = PRODUCT_IDS[planId as keyof typeof PRODUCT_IDS];
-                  const product = list.find(p => p.productId === productId);
-
-                  if (!product) {
-                    Alert.alert('Plan not available', 'We couldn\'t find that plan. Please try again.');
-                    return;
-                  }
-
-                  await handlePurchase(product.productId, planId as 'monthly' | 'yearly' | 'weekly');
-                }
-              }
-            ]
-          );
-        } else if (isDowngrade) {
-          // Downgrade - no payment required, just update database
-          Alert.alert(
-            'Downgrade Plan',
-            `Are you sure you want to downgrade to the ${plan.name} plan? Your new plan will take effect on your next billing cycle. No charge will be applied now.`,
-            [
-              { text: 'Cancel', style: 'cancel' },
-              {
-                text: 'Confirm',
-                onPress: async () => {
-                  try {
-                    console.log('[PROFILE] Changing plan to:', planId);
-                    await changePlan(planId as SubscriptionPlan);
-                    setIsBillingModalVisible(false);
-
-                    // Wait a moment for database to update, then reload
-                    console.log('[PROFILE] Plan changed, reloading user data...');
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                    await loadUserData();
-                    console.log('[PROFILE] User data reloaded');
-
-                    Alert.alert('Plan Changed', `Your plan will be downgraded to ${plan.name} at the end of your current billing cycle.`);
-                  } catch (error) {
-                    console.error('Error changing plan:', error);
-                    Alert.alert('Error', 'Failed to change plan. Please try again.');
-                  }
-                }
-              }
-            ]
-          );
-        }
-      } else {
-        // New subscription - use IAP
-        // If running in Expo Go, simulate the purchase
-        if (isExpoGo) {
-          await simulateUpgradeInExpoGo(planId);
-          return;
-        }
-
-        if (!isIAPAvailable) {
-          // For development/testing: Allow bypass in development mode
-          if (__DEV__) {
-            Alert.alert(
-              'Development Mode',
-              'IAP is not available. Would you like to simulate a successful purchase for testing?',
-              [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                  text: 'Simulate Purchase',
-                  onPress: async () => {
-                    try {
-                      // Get current user
-                      const { data: { user }, error: userError } = await supabase.auth.getUser();
-                      if (userError || !user) {
-                        throw new Error('User not authenticated');
-                      }
-
-                      // Determine credits based on plan
-                      let credits_max = 0;
-                      switch (planId) {
-                        case 'yearly': credits_max = 90; break;
-                        case 'monthly': credits_max = 75; break;
-                        case 'weekly': credits_max = 10; break;
-                      }
-
-                      // Update subscription in Supabase with is_pro_version = true
-                      const { error: updateError } = await supabase
-                        .from('profiles')
-                        .update({
-                          subscription_plan: planId,
-                          is_pro_version: true,
-                          subscription_id: `test_${planId}_${Date.now()}`,
-                          purchase_time: new Date().toISOString(),
-                          credits_current: credits_max,
-                          credits_max: credits_max,
-                          last_credit_reset: new Date().toISOString()
-                        })
-                        .eq('id', user.id);
-
-                      if (updateError) throw updateError;
-
-                      setIsBillingModalVisible(false);
-                      await loadUserData();
-                      Alert.alert('Success (Simulated)', 'Your subscription has been activated (development mode).');
-                    } catch (error) {
-                      console.error('Test purchase error:', error);
-                      Alert.alert('Error', 'Failed to activate test subscription.');
-                    }
-                  }
-                }
-              ]
-            );
-          } else {
-            Alert.alert(
-              'Purchases Unavailable',
-              'In-app purchases are only available on physical devices with a valid App Store connection.',
-              [{ text: 'OK' }]
-            );
-          }
-          return;
-        }
-
-        // Fetch products to ensure we have the latest
-        const list = products.length ? products : await fetchProducts(true);
-        const productId = PRODUCT_IDS[planId as keyof typeof PRODUCT_IDS];
-        const product = list.find(p => p.productId === productId);
-
-        if (!product) {
-          Alert.alert(
-            'Plan not available',
-            'We couldn\'t find that plan. Please check your internet connection and try again.'
-          );
-          return;
-        }
-
-        // Start the purchase with the selected plan
-        await handlePurchase(product.productId, planId as 'monthly' | 'yearly' | 'weekly');
-      }
-    } catch (error) {
-      setCurrentPurchaseAttempt(null);
-      Alert.alert('Error', 'Failed to process subscription. Please try again.');
-    }
-  };
-
-  const handlePurchase = async (productId: string, plan: 'weekly' | 'monthly' | 'yearly') => {
-    if (!isIAPAvailable) {
-      Alert.alert('Purchases unavailable', 'In-app purchases are not available on this device.');
-      setCurrentPurchaseAttempt(null);
+    // Simplified for consumables - just purchase more credits
+    if (isExpoGo) {
+      await simulateUpgradeInExpoGo(planId);
       return;
     }
 
-    // Update state for tracking
-    setCurrentPurchaseAttempt(plan);
+    if (!isIAPAvailable) {
+      Alert.alert(
+        'Setup Required',
+        'In-app purchases are not available.\n\n' +
+        'To make purchases:\n' +
+        '• Test in Expo Go for simulated purchases, OR\n' +
+        '• Set up consumable products in App Store Connect (starter.15, value.45, pro.120)'
+      );
+      return;
+    }
+
+    const list = products.length ? products : await fetchProducts(true);
+    const productId = PRODUCT_IDS[planId as keyof typeof PRODUCT_IDS];
+    const product = list.find(p => p.productId === productId);
+
+    if (!product) {
+      Alert.alert(
+        'Credit pack not available',
+        'We couldn\'t find that credit pack. Please check your internet connection and try again.'
+      );
+      return;
+    }
+
+    // Set the current purchase attempt
+    setCurrentPurchaseAttempt(planId as any);
+    await handlePurchase(product.productId, planId as 'starter' | 'value' | 'pro');
+  };
+
+  const handlePurchase = async (productId: string, plan: 'starter' | 'value' | 'pro') => {
+    if (!isIAPAvailable) {
+      Alert.alert(
+        'Setup Required',
+        'In-app purchases are not available.\n\n' +
+        'To make purchases:\n' +
+        '• Test in Expo Go for simulated purchases, OR\n' +
+        '• Set up consumable products in App Store Connect (starter.15, value.45, pro.120)'
+      );
+      setCurrentPurchaseAttempt(null);
+      return;
+    }
 
     try {
       console.log('[PROFILE] Attempting to purchase:', productId, 'for plan:', plan);
@@ -911,38 +944,28 @@ export default function ProfileScreen() {
       setIsBillingModalVisible(false);
       setCurrentPurchaseAttempt(null);
 
-      // Wait a moment for database to update, then reload
-      console.log('[PROFILE] Purchase successful, reloading user data...');
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      await loadUserData();
-      console.log('[PROFILE] User data reloaded');
-
-      Alert.alert(
-        'Success!',
-        'Your subscription has been activated. Thank you for subscribing!',
-        [{ text: 'OK' }]
-      );
+      // Immediately refresh credits in header and profile data
+      console.log('[PROFILE] Purchase successful, refreshing credits and user data...');
+      await Promise.all([
+        refreshCredits(),
+        loadUserData()
+      ]);
+      console.log('[PROFILE] Credits and user data refreshed successfully');
+      
+      // Show success message
+      Alert.alert('Success!', 'Your credits have been added. Thank you for your purchase!');
     } catch (e: any) {
       setCurrentPurchaseAttempt(null);
       const msg = String(e?.message || e);
 
-      if (/already.*(owned|subscribed)/i.test(msg)) {
-        Alert.alert(
-          'Already subscribed',
-          'You already have an active subscription. Manage your subscriptions from the App Store.',
-          [{ text: 'OK' }]
-        );
+      // Handle user cancellation
+      if (/user.*(cancel|abort)/i.test(msg) || /cancel/i.test(msg)) {
+        console.log('[PROFILE] Purchase was cancelled by user');
         return;
       }
 
       if (/item.*unavailable|product.*not.*available/i.test(msg)) {
-        Alert.alert('Not available', 'This plan isn\'t available for purchase right now.');
-        return;
-      }
-
-      // Handle user cancellation
-      if (/user.*(cancel|abort)/i.test(msg) || /cancel/i.test(msg)) {
-        console.log('[PROFILE] Purchase was cancelled by user');
+        Alert.alert('Not available', 'This credit pack isn\'t available for purchase right now.');
         return;
       }
 
@@ -1043,29 +1066,58 @@ export default function ProfileScreen() {
         <View style={styles.profileHeader}>
           <View style={styles.avatar}>
             <Text style={styles.avatarText}>
-              {user?.isGuest ? 'G' : (user?.email?.charAt(0).toUpperCase() || '?')}
+              {user?.isGuest
+                ? (profile?.name?.charAt(0).toUpperCase() || 'G')
+                : (user?.email?.charAt(0).toUpperCase() || '?')
+              }
             </Text>
           </View>
-          <Text style={styles.email}>{user?.isGuest ? 'Guest' : user?.email}</Text>
-          <Text style={styles.plan}>{currentPlan}</Text>
+          <Text style={styles.email}>
+            {user?.isGuest ? (profile?.name || 'Guest') : user?.email}
+          </Text>
         </View>
 
 
         <View style={styles.settingsSection}>
           <Text style={styles.sectionTitle}>Settings</Text>
-          {settings.map((setting) => (
-            <TouchableOpacity
-              key={setting.id}
-              style={styles.settingItem}
-              onPress={() => handleSettingPress(setting.id)}
-            >
-              <View style={styles.settingContent}>
-                <Text style={styles.settingTitle}>{setting.title}</Text>
-                <Text style={styles.settingSubtitle}>{setting.subtitle}</Text>
-              </View>
-              <Text style={styles.settingArrow}>›</Text>
-            </TouchableOpacity>
-          ))}
+          {settings.map((setting) => {
+            if (setting.id === 'upgrade') {
+              return (
+                <LinearGradient
+                  key={setting.id}
+                  colors={['#14b8a6', '#1e3a8a']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.gradientBorder}
+                >
+                  <TouchableOpacity
+                    style={styles.settingItemWithGradient}
+                    onPress={() => handleSettingPress(setting.id)}
+                  >
+                    <View style={styles.settingContent}>
+                      <Text style={styles.settingTitle}>{setting.title}</Text>
+                      <Text style={styles.settingSubtitle}>{setting.subtitle}</Text>
+                    </View>
+                    <Text style={styles.settingArrow}>›</Text>
+                  </TouchableOpacity>
+                </LinearGradient>
+              );
+            }
+
+            return (
+              <TouchableOpacity
+                key={setting.id}
+                style={styles.settingItem}
+                onPress={() => handleSettingPress(setting.id)}
+              >
+                <View style={styles.settingContent}>
+                  <Text style={styles.settingTitle}>{setting.title}</Text>
+                  <Text style={styles.settingSubtitle}>{setting.subtitle}</Text>
+                </View>
+                <Text style={styles.settingArrow}>›</Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
 
@@ -1073,11 +1125,9 @@ export default function ProfileScreen() {
           <Text style={styles.signOutText}>Sign Out</Text>
         </TouchableOpacity>
 
-        {!user?.isGuest && (
-          <TouchableOpacity style={styles.deleteAccountButton} onPress={handleDeleteAccount}>
-            <Text style={styles.deleteAccountText}>Delete Account</Text>
-          </TouchableOpacity>
-        )}
+        <TouchableOpacity style={styles.deleteAccountButton} onPress={handleDeleteAccount}>
+          <Text style={styles.deleteAccountText}>Delete Account</Text>
+        </TouchableOpacity>
       </ScrollView>
 
       {/* About Modal */}
@@ -1282,7 +1332,7 @@ export default function ProfileScreen() {
 
             {/* Header */}
             <View style={styles.header}>
-              <Text style={styles.billingTitle}>Turn Icons Into Paychecks.</Text>
+              <Text style={styles.billingTitle}>Turn Ideas Into Clicks.</Text>
               <Text style={styles.billingSubtitle}>
                 Every click counts. Create and save eye-catching icons that grow your channel, build your audience, and boost your revenue.
               </Text>
@@ -1290,43 +1340,66 @@ export default function ProfileScreen() {
 
             {/* Plans */}
             <View style={styles.plansContainer}>
-              {subscriptionPlans.map((plan) => {
-                // Check if this is the user's active plan
-                const isActivePlan = subscriptionDisplay.status === 'active' && (
-                  (plan.id === 'yearly' && subscriptionDisplay.plan.includes('Yearly')) ||
-                  (plan.id === 'monthly' && subscriptionDisplay.plan.includes('Monthly')) ||
-                  (plan.id === 'weekly' && subscriptionDisplay.plan.includes('Weekly'))
-                );
+              {/* Starter Plan */}
+              <TouchableOpacity
+                style={[
+                  styles.planCard,
+                  selectedPlan === 'starter' && styles.selectedPlan,
+                ]}
+                onPress={() => setSelectedPlan('starter')}
+              >
+                <View style={styles.planRadio}>
+                  {selectedPlan === 'starter' && <View style={styles.planRadioSelected} />}
+                </View>
+                <View style={styles.planContent}>
+                  <Text style={styles.planName}>Starter</Text>
+                </View>
+                <View style={styles.planPricing}>
+                  <Text style={styles.planPrice}>{formatPrice('$1.99')}</Text>
+                  <Text style={styles.planSubtext}>Quick Try · 15 AI Icons</Text>
+                </View>
+              </TouchableOpacity>
 
-                return (
-                  <TouchableOpacity
-                    key={plan.id}
-                    style={[
-                      styles.planCard,
-                      selectedPlan === plan.id && styles.selectedPlan,
-                      isActivePlan && styles.disabledPlan,
-                    ]}
-                    onPress={() => !isActivePlan && setSelectedPlan(plan.id)}
-                    disabled={isActivePlan}
-                  >
-                    {isActivePlan && (
-                      <View style={styles.activeBadge}>
-                        <Text style={styles.activeText}>CURRENT PLAN</Text>
-                      </View>
-                    )}
-                    <View style={[styles.planRadio, isActivePlan && styles.disabledRadio]}>
-                      {selectedPlan === plan.id && !isActivePlan && <View style={styles.planRadioSelected} />}
-                    </View>
-                    <View style={styles.planContent}>
-                      <Text style={[styles.planName, isActivePlan && styles.disabledText]}>{plan.name}</Text>
-                    </View>
-                    <View style={styles.planPricing}>
-                      <Text style={[styles.planPrice, isActivePlan && styles.disabledText]}>{plan.price}</Text>
-                      <Text style={[styles.planSubtext, isActivePlan && styles.disabledText]}>{plan.imageLimit}</Text>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
+              {/* Value Plan */}
+              <TouchableOpacity
+                style={[
+                  styles.planCard,
+                  selectedPlan === 'value' && styles.selectedPlan,
+                ]}
+                onPress={() => setSelectedPlan('value')}
+              >
+                <View style={styles.planRadio}>
+                  {selectedPlan === 'value' && <View style={styles.planRadioSelected} />}
+                </View>
+                <View style={styles.planContent}>
+                  <Text style={styles.planName}>Value</Text>
+                </View>
+                <View style={styles.planPricing}>
+                  <Text style={styles.planPrice}>{formatPrice('$5.99')}</Text>
+                  <Text style={styles.planSubtext}>Growing Channels · 45 AI Icons</Text>
+                </View>
+              </TouchableOpacity>
+
+              {/* Pro Plan - Most Popular */}
+              <TouchableOpacity
+                style={[
+                  styles.planCard,
+                  selectedPlan === 'pro' && styles.selectedPlan,
+                  styles.popularPlan,
+                ]}
+                onPress={() => setSelectedPlan('pro')}
+              >
+                <View style={styles.planRadio}>
+                  {selectedPlan === 'pro' && <View style={styles.planRadioSelected} />}
+                </View>
+                <View style={styles.planContent}>
+                  <Text style={styles.planName}>Pro</Text>
+                </View>
+                <View style={styles.planPricing}>
+                  <Text style={styles.planPrice}>{formatPrice('$14.99')}</Text>
+                  <Text style={styles.planSubtext}>Serious Growth · 120 AI Icons</Text>
+                </View>
+              </TouchableOpacity>
             </View>
           </ScrollView>
 
@@ -1344,7 +1417,7 @@ export default function ProfileScreen() {
                 style={styles.continueGradient}
               >
                 <Text style={styles.continueText}>
-                  {!iapReady ? 'Connecting...' : loadingProducts ? 'Loading...' : currentPurchaseAttempt ? 'Processing...' : 'Continue'}
+                  {!iapReady ? 'Connecting...' : loadingProducts ? 'Loading...' : currentPurchaseAttempt ? 'Processing...' : 'Purchase Credits'}
                 </Text>
               </LinearGradient>
             </TouchableOpacity>
@@ -1362,10 +1435,10 @@ export default function ProfileScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.billingManagementModal}>
             <ScrollView showsVerticalScrollIndicator={false}>
-              <Text style={styles.billingManagementTitle}>Billing & Subscription</Text>
+              <Text style={styles.billingManagementTitle}>Purchase History</Text>
 
               <View style={styles.currentPlanSection}>
-                <Text style={styles.currentPlanTitle}>Current Plan</Text>
+                <Text style={styles.currentPlanTitle}>Last Purchase</Text>
                 <View style={styles.planDetailsCard}>
                   <View style={styles.planInfo}>
                     <Text style={styles.planNameText}>{subscriptionDisplay.plan}</Text>
@@ -1373,7 +1446,7 @@ export default function ProfileScreen() {
                   </View>
                   {subscriptionDisplay.status === 'active' && (
                     <View style={styles.statusBadge}>
-                      <Text style={styles.statusText}>Active</Text>
+                      <Text style={styles.statusText}>Purchased</Text>
                     </View>
                   )}
                   {subscriptionDisplay.status === 'inactive' && (
@@ -1385,7 +1458,7 @@ export default function ProfileScreen() {
 
                 {subscriptionDisplay.renewalDate && (
                   <View style={styles.renewalInfo}>
-                    <Text style={styles.renewalLabel}>Next Billing Date</Text>
+                    <Text style={styles.renewalLabel}>Purchase Date</Text>
                     <Text style={styles.renewalDate}>
                       {new Date(subscriptionDisplay.renewalDate).toLocaleDateString('en-US', {
                         weekday: 'long',
@@ -1403,20 +1476,9 @@ export default function ProfileScreen() {
                     onPress={handleUpgradeFromBilling}
                   >
                     <Text style={styles.upgradeButtonText}>
-                      {subscriptionDisplay.status === 'inactive'
-                        ? 'Upgrade Plan'
-                        : subscriptionDisplay.plan.includes('Yearly') ? 'Downgrade Plan' : 'Upgrade Plan'}
+                      Purchase More Credits
                     </Text>
                   </TouchableOpacity>
-
-                  {subscriptionDisplay.status === 'active' && (
-                    <TouchableOpacity
-                      style={styles.cancelButton}
-                      onPress={handleCancelSubscription}
-                    >
-                      <Text style={styles.cancelButtonText}>Cancel Subscription</Text>
-                    </TouchableOpacity>
-                  )}
                 </View>
               </View>
             </ScrollView>
@@ -1545,6 +1607,18 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 12,
     marginBottom: 8,
+  },
+  gradientBorder: {
+    borderRadius: 12,
+    padding: 2,
+    marginBottom: 8,
+  },
+  settingItemWithGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: CARD,
+    padding: 16,
+    borderRadius: 10,
   },
   settingContent: {
     flex: 1,

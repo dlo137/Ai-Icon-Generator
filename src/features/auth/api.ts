@@ -17,18 +17,17 @@ export async function signUpEmail(email: string, password: string, fullName?: st
   });
   if (error) throw error;
 
-  // Update profile table with the name and mark onboarding started if user was created
+  // Update profile table with the name if user was created
   if (data.user && fullName) {
     const { error: profileError } = await supabase
       .from('profiles')
       .update({
-        name: fullName,
-        onboarding_completed: false  // Mark as not completed yet - will be set to true when they finish subscription screen
+        name: fullName
       })
       .eq('id', data.user.id);
 
     if (profileError) {
-      console.error('Error updating profile:', profileError);
+      // Profile update error
     }
   }
 
@@ -42,6 +41,8 @@ export async function signInEmail(email: string, password: string) {
 }
 
 export async function signOut() {
+  // Clear onboarding flag so next sign-in shows onboarding
+  await AsyncStorage.removeItem('hasCompletedOnboarding');
   await supabase.auth.signOut();
 }
 
@@ -96,8 +97,6 @@ export async function deleteAccount(): Promise<void> {
 
     // Step 1: Delete all images from Supabase Storage
     try {
-      console.log('Deleting user images from Supabase Storage...');
-
       // List all files in the thumbnails bucket for this user
       const { data: files, error: listError } = await supabase.storage
         .from('thumbnails')
@@ -111,38 +110,31 @@ export async function deleteAccount(): Promise<void> {
           .remove(filePaths);
 
         if (deleteFilesError) {
-          console.error('Error deleting files from storage:', deleteFilesError);
+          // Error deleting files
         } else {
-          console.log(`Deleted ${filePaths.length} files from Supabase Storage`);
+          // Files deleted successfully
         }
       }
     } catch (storageError) {
-      console.error('Error accessing Supabase Storage:', storageError);
       // Continue with deletion even if storage cleanup fails
     }
 
     // Step 2: Delete local thumbnail files from FileSystem
     try {
-      console.log('Deleting local thumbnail files...');
       const thumbnailDir = `${FileSystem.documentDirectory}thumbnails/`;
       const dirInfo = await FileSystem.getInfoAsync(thumbnailDir);
 
       if (dirInfo.exists) {
         await FileSystem.deleteAsync(thumbnailDir, { idempotent: true });
-        console.log('Deleted local thumbnail directory');
       }
     } catch (fileSystemError) {
-      console.error('Error deleting local files:', fileSystemError);
       // Continue with deletion even if file cleanup fails
     }
 
     // Step 3: Clear AsyncStorage thumbnail data
     try {
-      console.log('Clearing thumbnail data from AsyncStorage...');
       await AsyncStorage.removeItem('saved_thumbnails');
-      console.log('Cleared thumbnail data from AsyncStorage');
     } catch (asyncStorageError) {
-      console.error('Error clearing AsyncStorage:', asyncStorageError);
       // Continue with deletion even if AsyncStorage cleanup fails
     }
 
@@ -153,7 +145,6 @@ export async function deleteAccount(): Promise<void> {
       .eq('id', user.id);
 
     if (profileError) {
-      console.error('Error deleting profile:', profileError);
       // Continue anyway - profile might not exist or might be cascade deleted
     }
 
@@ -169,15 +160,13 @@ export async function deleteAccount(): Promise<void> {
         return;
       }
     } catch (edgeFunctionError) {
-      console.log('Edge function not available, continuing with sign out');
+      // Edge function not available, continuing with sign out
     }
 
     // Step 6: Sign out the user
     await supabase.auth.signOut();
 
-    console.log('User account and all images deleted successfully');
   } catch (error) {
-    console.error('Delete account error:', error);
     throw error;
   }
 }
@@ -222,7 +211,6 @@ export async function signInWithApple() {
       // This includes both real emails and private relay emails
       if (data.user.email && (!existingProfile?.email || existingProfile.email !== data.user.email)) {
         updates.email = data.user.email;
-        console.log('[Apple Sign In] Saving email to profile:', data.user.email);
       }
 
       // If new user with full name from Apple, add it
@@ -237,7 +225,6 @@ export async function signInWithApple() {
 
         if (fullNameString) {
           updates.name = fullNameString;
-          console.log('[Apple Sign In] Saving name to profile:', fullNameString);
         }
       }
 
@@ -248,11 +235,9 @@ export async function signInWithApple() {
         if (!isPrivateEmail) {
           // Use real email prefix as name
           updates.name = data.user.email.split('@')[0];
-          console.log('[Apple Sign In] Using email prefix as name:', updates.name);
         } else {
           // For private emails, use a generic name
           updates.name = 'User';
-          console.log('[Apple Sign In] Using generic name for private relay email');
         }
       }
 
@@ -263,7 +248,6 @@ export async function signInWithApple() {
 
       // Update profile if there are updates
       if (Object.keys(updates).length > 0) {
-        console.log('[Apple Sign In] Updating profile with:', updates);
         await supabase
           .from('profiles')
           .update(updates)
@@ -286,8 +270,6 @@ export async function signInWithGoogle() {
     WebBrowser.maybeCompleteAuthSession();
 
     const Platform = require('react-native').Platform;
-    console.log('[Google Auth] Starting OAuth with redirect:', redirectTo);
-    console.log('[Google Auth] Platform:', Platform.OS);
 
     // Start Google OAuth flow
     const { data, error } = await supabase.auth.signInWithOAuth({
@@ -302,7 +284,6 @@ export async function signInWithGoogle() {
     });
 
     if (error) {
-      console.error('[Google Auth] OAuth init error:', error);
       throw new Error(`Google OAuth initialization failed: ${error.message}`);
     }
 
@@ -549,21 +530,32 @@ async function checkAndSetOnboardingStatus(userId: string) {
 
 /**
  * Mark onboarding as complete for the current user
+ * Sets both database field and AsyncStorage flag for persistence
  */
 export async function completeOnboarding() {
+  console.log('[AUTH] Completing onboarding...');
+
   const { data: { user }, error } = await supabase.auth.getUser();
 
   if (error || !user) {
-    throw new Error('User not authenticated');
+    console.log('[AUTH] No user found, skipping database update');
+    // Still set AsyncStorage even if no user (for guests)
+  } else {
+    // Update database for authenticated users
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({ onboarding_completed: true })
+      .eq('id', user.id);
+
+    if (updateError) {
+      console.error('[AUTH] Error updating database:', updateError);
+      // Don't throw - still set AsyncStorage
+    } else {
+      console.log('[AUTH] Database updated successfully');
+    }
   }
 
-  const { error: updateError } = await supabase
-    .from('profiles')
-    .update({ onboarding_completed: true })
-    .eq('id', user.id);
-
-  if (updateError) {
-    console.error('Error completing onboarding:', updateError);
-    throw updateError;
-  }
+  // Set AsyncStorage flag for persistence (works for both guests and regular users)
+  await AsyncStorage.setItem('hasCompletedOnboarding', 'true');
+  console.log('[AUTH] ✅ Onboarding marked as complete in AsyncStorage');
 }

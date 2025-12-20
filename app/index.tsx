@@ -7,6 +7,7 @@ import FloatingParticles from '../src/components/FloatingParticles';
 import ConfettiCannon from 'react-native-confetti-cannon';
 import * as Haptics from 'expo-haptics';
 import TimeChart from '../src/components/TimeChart';
+import { checkUserSession, setupAuthListener } from '../src/utils/sessionManager';
 
 export default function WelcomeScreen() {
   const router = useRouter();
@@ -27,6 +28,14 @@ export default function WelcomeScreen() {
   useEffect(() => {
     checkSession();
 
+    // Set up auth state listener for persistent session management
+    const subscription = setupAuthListener((isAuthenticated) => {
+      // Re-check session when auth state changes
+      if (!isAuthenticated) {
+        checkSession();
+      }
+    });
+
     // Start pulsing glow animation
     Animated.loop(
       Animated.sequence([
@@ -42,6 +51,33 @@ export default function WelcomeScreen() {
         }),
       ])
     ).start();
+
+    // DEBUG: Add manual AsyncStorage inspection after a delay
+    setTimeout(async () => {
+      try {
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        const allKeys = await AsyncStorage.getAllKeys();
+        const relevantKeys = allKeys.filter(key => 
+          key.includes('onboarding') || 
+          key.includes('auth') || 
+          key.includes('session') ||
+          key.includes('supabase')
+        );
+        // Debug: Check relevant AsyncStorage keys
+        
+        if (relevantKeys.length > 0) {
+          const values = await AsyncStorage.multiGet(relevantKeys);
+          // Debug: AsyncStorage values
+        }
+      } catch (debugError) {
+        // Debug inspection failed
+      }
+    }, 2000);
+
+    // Cleanup subscription on unmount
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   // Trigger haptic feedback when confetti starts on step 1
@@ -59,66 +95,85 @@ export default function WelcomeScreen() {
 
   const checkSession = async () => {
     try {
-      const { data: { session }, error } = await supabase.auth.getSession();
+      // Starting authentication check
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      
+      // PRIORITY 1: Check onboarding completion FIRST - this overrides everything
+      let hasCompletedOnboarding = null;
+      try {
+        hasCompletedOnboarding = await AsyncStorage.getItem('hasCompletedOnboarding');
+        // Check onboarding completion status
+      } catch (asyncError) {
+        // Error reading onboarding status
+      }
 
-      // Handle refresh token errors by clearing the session
-      if (error) {
-        console.log('Session error detected:', error.message);
+      // If user has completed onboarding, go to main app immediately (skip session check)
+      if (hasCompletedOnboarding === 'true') {
+        // ONBOARDING COMPLETED - Going directly to main app
+        router.replace('/(tabs)/generate');
+        return;
+      }
 
-        // Clear invalid session if it's a token-related error
-        if (error.message?.toLowerCase().includes('refresh token') ||
-            error.message?.toLowerCase().includes('invalid') ||
-            error.message?.toLowerCase().includes('jwt')) {
-          console.log('Invalid token detected, clearing session...');
-          try {
-            await supabase.auth.signOut();
-            const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-            await AsyncStorage.removeItem('supabase.auth.token');
-          } catch (clearError) {
-            console.error('Error clearing session:', clearError);
-          }
+      // PRIORITY 2: Only check session if onboarding is not completed
+      // Onboarding not completed - checking session
+      
+      let sessionInfo = null;
+      try {
+        // Wrap session check in timeout to prevent hanging
+        const sessionPromise = checkUserSession();
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Session check timeout')), 8000)
+        );
+        
+        sessionInfo = await Promise.race([sessionPromise, timeoutPromise]);
+        // Session check completed
+      } catch (sessionError) {
+        // Session check failed or timed out
+        
+        // If session check fails but onboarding was completed, still go to main app
+        if (hasCompletedOnboarding === 'true') {
+          // Session failed but onboarding completed - going to main app
+          router.replace('/(tabs)/generate');
+          return;
         }
-
+        
+        // Otherwise continue to onboarding
+        // Session failed and no onboarding - showing onboarding
         setIsCheckingAuth(false);
         return;
       }
 
-      if (session) {
-        // Check if user has completed onboarding by verifying profile exists
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('id, onboarding_completed')
-          .eq('id', session.user.id)
-          .single();
-
-        // Only redirect to generate if user has completed onboarding
-        // Profile exists and onboarding_completed is true (or field doesn't exist for existing users)
-        if (profile && (profile.onboarding_completed !== false)) {
-          router.replace('/(tabs)/generate');
-        } else {
-          // New user with session but no onboarding - let them continue through onboarding
-          setIsCheckingAuth(false);
-        }
-      } else {
-        setIsCheckingAuth(false);
+      // If user is authenticated, they can skip onboarding
+      if (sessionInfo && sessionInfo.isAuthenticated) {
+        // User authenticated - going to main app
+        router.replace('/(tabs)/generate');
+        return;
       }
+
+      // Default: Show onboarding for new users
+      // New user - showing onboarding flow
+      setIsCheckingAuth(false);
+      
     } catch (error: any) {
-      console.error('Error checking session:', error);
-
-      // If we get a refresh token error, clear the bad session
-      if (error?.message?.toLowerCase().includes('refresh token') ||
-          error?.message?.toLowerCase().includes('invalid') ||
-          error?.message?.toLowerCase().includes('jwt')) {
-        console.log('Clearing bad session after error...');
-        try {
-          await supabase.auth.signOut();
-          const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-          await AsyncStorage.removeItem('supabase.auth.token');
-        } catch (clearError) {
-          console.error('Error clearing session:', clearError);
+      // Critical error in checkSession
+      
+      // EMERGENCY FALLBACK: Always check onboarding completion
+      try {
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        const hasCompletedOnboarding = await AsyncStorage.getItem('hasCompletedOnboarding');
+        // Emergency fallback - check onboarding status
+        
+        if (hasCompletedOnboarding === 'true') {
+          // EMERGENCY: Onboarding completed - redirecting to main app
+          router.replace('/(tabs)/generate');
+          return;
         }
+      } catch (fallbackError) {
+        // Emergency fallback failed
       }
-
+      
+      // Final fallback: show onboarding
+      // All checks failed - showing onboarding
       setIsCheckingAuth(false);
     }
   };

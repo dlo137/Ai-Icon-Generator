@@ -30,7 +30,7 @@ export default function ForgotPasswordScreen() {
       // This ensures the auth code is properly exchanged for a session
       const redirectUrl = Linking.createURL('/auth/callback');
 
-      console.log('[Forgot Password] Sending reset email with redirect:', redirectUrl);
+      // Sending reset email
 
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: redirectUrl,
@@ -52,7 +52,7 @@ export default function ForgotPasswordScreen() {
       );
 
     } catch (error: any) {
-      console.error('Password reset error:', error);
+      // Password reset error
       Alert.alert('Error', error.message || 'Failed to send reset email. Please try again.');
     } finally {
       setIsLoading(false);

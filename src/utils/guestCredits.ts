@@ -18,20 +18,32 @@ export interface CreditsInfo {
 
 /**
  * Initialize guest credits based on subscription plan
+ * Adds new credits to existing balance
  */
 export async function initializeGuestCredits(plan: SubscriptionPlan): Promise<void> {
   try {
-    const maxCredits = PLAN_CONFIG[plan]?.credits || 0;
+    const creditsToAdd = PLAN_CONFIG[plan]?.credits || 0;
+
+    // Get existing credits
+    const existingData = await AsyncStorage.getItem(GUEST_CREDITS_KEY);
+    const existingCredits = existingData ? JSON.parse(existingData) : null;
+    const currentCredits = existingCredits?.current || 0;
+
+    // New total = existing + new purchase
+    const newTotal = currentCredits + creditsToAdd;
+
+    // Denominator logic: Set to pack size, unless current > pack size, then match current
+    const newMax = newTotal > creditsToAdd ? newTotal : creditsToAdd;
 
     const credits: GuestCreditsInfo = {
-      current: maxCredits,
-      max: maxCredits,
+      current: newTotal,
+      max: newMax, // Pack size, or current if current > pack size
       lastResetDate: new Date().toISOString(),
       plan
     };
 
     await AsyncStorage.setItem(GUEST_CREDITS_KEY, JSON.stringify(credits));
-    console.log('[Guest Credits] Initialized:', plan, maxCredits);
+    console.log('[Guest Credits] Initialized:', plan, 'added', creditsToAdd, 'current:', newTotal, 'max:', newMax);
   } catch (error) {
     console.error('[Guest Credits] Error initializing:', error);
     throw error;
@@ -39,32 +51,32 @@ export async function initializeGuestCredits(plan: SubscriptionPlan): Promise<vo
 }
 
 /**
- * Get guest credits with automatic reset check
+ * Get guest credits (CONSUMABLE - no auto-reset)
  */
 export async function getGuestCredits(): Promise<CreditsInfo> {
   try {
+    console.log('[Guest Credits] Reading from AsyncStorage key:', GUEST_CREDITS_KEY);
     const creditsData = await AsyncStorage.getItem(GUEST_CREDITS_KEY);
+    console.log('[Guest Credits] Raw data from AsyncStorage:', creditsData);
 
     if (!creditsData) {
       // No credits found - return 0
+      console.log('[Guest Credits] No credits found, returning 0/0');
       return { current: 0, max: 0 };
     }
 
     const credits: GuestCreditsInfo = JSON.parse(creditsData);
+    console.log('[Guest Credits] Parsed credits:', JSON.stringify(credits));
 
-    // Check if reset is needed
-    const needsReset = await shouldResetCredits(credits.lastResetDate, credits.plan);
+    // Consumable model: Credits don't auto-reset
+    // User must purchase more when they run out
 
-    if (needsReset) {
-      console.log('[Guest Credits] Auto-reset triggered for', credits.plan);
-      await resetGuestCredits();
-      return await getGuestCredits(); // Return freshly reset credits
-    }
-
-    return {
+    const result = {
       current: credits.current,
       max: credits.max
     };
+    console.log('[Guest Credits] Returning:', JSON.stringify(result));
+    return result;
   } catch (error) {
     console.error('[Guest Credits] Error getting credits:', error);
     return { current: 0, max: 0 };
@@ -72,7 +84,7 @@ export async function getGuestCredits(): Promise<CreditsInfo> {
 }
 
 /**
- * Deduct credits from guest account
+ * Deduct credits from guest account (CONSUMABLE - no auto-reset)
  */
 export async function deductGuestCredit(amount: number = 1): Promise<boolean> {
   try {
@@ -85,22 +97,12 @@ export async function deductGuestCredit(amount: number = 1): Promise<boolean> {
 
     const credits: GuestCreditsInfo = JSON.parse(creditsData);
 
-    // Check if auto-reset is needed first
-    const needsReset = await shouldResetCredits(credits.lastResetDate, credits.plan);
-    if (needsReset) {
-      console.log('[Guest Credits] Auto-reset before deduction');
-      await resetGuestCredits();
-      const freshCredits = await getGuestCredits();
-      credits.current = freshCredits.current;
-      credits.max = freshCredits.max;
-    }
-
     if (credits.current < amount) {
       console.error('[Guest Credits] Insufficient credits:', credits.current);
       return false;
     }
 
-    // Deduct
+    // Deduct (consumable model - no reset)
     credits.current -= amount;
     await AsyncStorage.setItem(GUEST_CREDITS_KEY, JSON.stringify(credits));
 
@@ -138,32 +140,6 @@ export async function resetGuestCredits(): Promise<void> {
   }
 }
 
-/**
- * Check if credits should be auto-reset based on plan
- */
-async function shouldResetCredits(lastResetDate: string, plan: SubscriptionPlan): Promise<boolean> {
-  try {
-    const lastReset = new Date(lastResetDate);
-    const now = new Date();
-
-    if (plan === 'weekly') {
-      // Reset if 7+ days have passed
-      const daysDiff = Math.floor((now.getTime() - lastReset.getTime()) / (1000 * 60 * 60 * 24));
-      return daysDiff >= 7;
-    } else if (plan === 'monthly') {
-      // Reset if month has changed
-      return now.getMonth() !== lastReset.getMonth() || now.getFullYear() !== lastReset.getFullYear();
-    } else if (plan === 'yearly') {
-      // Yearly plan gets monthly credits - reset if month has changed
-      return now.getMonth() !== lastReset.getMonth() || now.getFullYear() !== lastReset.getFullYear();
-    }
-
-    return false;
-  } catch (error) {
-    console.error('[Guest Credits] Error checking reset:', error);
-    return false;
-  }
-}
 
 /**
  * Clear guest credits (for account upgrades)

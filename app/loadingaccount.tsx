@@ -2,6 +2,7 @@ import { View, Text, StyleSheet, Animated } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'expo-router';
+import { isGuestSession } from '../src/utils/guestSession';
 
 export default function LoadingAccountScreen() {
   const router = useRouter();
@@ -21,8 +22,8 @@ export default function LoadingAccountScreen() {
       setPercent((prev) => {
         if (prev >= 100) {
           clearInterval(interval);
-          // Navigate to subscription screen after completion
-          setTimeout(() => {
+          // Navigate to subscription screen for both guests and regular users
+          setTimeout(async () => {
             router.push('subscriptionScreen' as any);
           }, 500);
           return 100;

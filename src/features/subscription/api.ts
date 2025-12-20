@@ -1,5 +1,5 @@
 import { supabase } from "../../../lib/supabase";
-import { PLAN_CONFIG, calculateEndDate, type SubscriptionPlan } from './plans';
+import { PLAN_CONFIG, type SubscriptionPlan } from './plans';
 
 export interface SubscriptionData {
   subscription_plan: SubscriptionPlan;
@@ -13,23 +13,7 @@ export interface SubscriptionData {
 
 // Get price based on plan
 function getPriceForPlan(plan: SubscriptionPlan): number {
-  switch (plan) {
-    case 'weekly':
-      return 2.99;
-    case 'monthly':
-      return 5.99;
-    case 'yearly':
-      return 59.99;
-    default:
-      return 0;
-  }
-}
-
-// Calculate trial end date (3 days from now)
-function calculateTrialEndDate(): string {
-  const trialDate = new Date();
-  trialDate.setDate(trialDate.getDate() + 3);
-  return trialDate.toISOString();
+  return PLAN_CONFIG[plan].price;
 }
 
 // Determine plan from product ID
@@ -44,20 +28,20 @@ function getPlanFromProductId(productId: string): SubscriptionPlan {
 
   let plan: SubscriptionPlan;
 
-  // Check for plan type in order (most specific first)
-  if (normalizedId.includes('yearly') || normalizedId.includes('year')) {
-    plan = 'yearly';
-    console.log('[PLAN DETECTION] ✓ Matched: yearly');
-  } else if (normalizedId.includes('monthly') || normalizedId.includes('month')) {
-    plan = 'monthly';
-    console.log('[PLAN DETECTION] ✓ Matched: monthly');
-  } else if (normalizedId.includes('weekly') || normalizedId.includes('week')) {
-    plan = 'weekly';
-    console.log('[PLAN DETECTION] ✓ Matched: weekly');
+  // Check for consumable pack type
+  if (normalizedId.includes('pro') || normalizedId.includes('200')) {
+    plan = 'pro';
+    console.log('[PLAN DETECTION] ✓ Matched: pro');
+  } else if (normalizedId.includes('value') || normalizedId.includes('75')) {
+    plan = 'value';
+    console.log('[PLAN DETECTION] ✓ Matched: value');
+  } else if (normalizedId.includes('starter') || normalizedId.includes('25')) {
+    plan = 'starter';
+    console.log('[PLAN DETECTION] ✓ Matched: starter');
   } else {
-    // Default to weekly if no match
-    plan = 'weekly';
-    console.log('[PLAN DETECTION] ⚠️ No match found, defaulting to: weekly');
+    // Default to starter if no match
+    plan = 'starter';
+    console.log('[PLAN DETECTION] ⚠️ No match found, defaulting to: starter');
   }
 
   console.log('[PLAN DETECTION] Final detected plan:', plan);
@@ -66,71 +50,79 @@ function getPlanFromProductId(productId: string): SubscriptionPlan {
 }
 
 /**
- * Update user's subscription information in Supabase profile table
+ * Update user's credits after consumable purchase
  *
  * IMPORTANT: Use the plan the user SELECTED, not what's in the purchase object.
  * Apple's purchase object is unreliable for determining which specific plan was purchased.
+ *
+ * For consumables: ADD credits to existing balance, don't replace
  */
 export async function updateSubscriptionInProfile(
   plan: SubscriptionPlan,
   purchaseId: string,
   purchaseTime?: string
 ): Promise<void> {
-  console.log('[SUBSCRIPTION API] ========== START UPDATE ==========');
-  console.log('[SUBSCRIPTION API] Plan (USER SELECTED):', plan);
-  console.log('[SUBSCRIPTION API] Purchase ID:', purchaseId);
-  console.log('[SUBSCRIPTION API] Purchase Time:', purchaseTime);
+  console.log('[CONSUMABLE API] ========== START PURCHASE ==========');
+  console.log('[CONSUMABLE API] Plan (USER SELECTED):', plan);
+  console.log('[CONSUMABLE API] Purchase ID:', purchaseId);
+  console.log('[CONSUMABLE API] Purchase Time:', purchaseTime);
 
   try {
-    // Get current user
-    console.log('[SUBSCRIPTION API] Getting current user...');
+    // Get current user (works for both authenticated and anonymous users)
+    console.log('[CONSUMABLE API] Getting current user from Supabase auth...');
     const { data: { user }, error: userError } = await supabase.auth.getUser();
+    console.log('[CONSUMABLE API] Auth response - user:', user ? 'exists' : 'null');
+    console.log('[CONSUMABLE API] Auth response - error:', userError ? userError.message : 'none');
 
     if (userError) {
-      console.error('[SUBSCRIPTION API] ❌ User error:', userError);
+      console.error('[CONSUMABLE API] ❌ User error:', userError);
       throw new Error(`User authentication error: ${userError.message}`);
     }
 
     if (!user) {
-      console.error('[SUBSCRIPTION API] ❌ No user found');
+      console.error('[CONSUMABLE API] ❌ No user found');
       throw new Error('User not authenticated - no user object');
     }
 
-    console.log('[SUBSCRIPTION API] ✅ User authenticated:', user.id);
-    console.log('[SUBSCRIPTION API] User email:', user.email);
+    console.log('[CONSUMABLE API] ✅ User authenticated:', user.id);
+    console.log('[CONSUMABLE API] User email:', user.email);
 
     // Get plan configuration (single source of truth)
     const config = PLAN_CONFIG[plan];
     const productId = config.productId;
     const price = config.price;
-    const credits_max = config.credits;
+    const creditsToAdd = config.credits;
 
-    console.log('[SUBSCRIPTION API] Plan config:', {
+    console.log('[CONSUMABLE API] Plan config:', {
       productId,
       price,
-      credits: credits_max,
+      creditsToAdd,
     });
 
-    // Ensure subscription_id is never null/undefined
-    let subscriptionId = purchaseId;
-    if (!subscriptionId) {
+    // Ensure purchase_id is never null/undefined
+    let purchaseIdFinal = purchaseId;
+    if (!purchaseIdFinal) {
       const timestamp = Date.now();
       const random = Math.random().toString(36).substring(2, 15);
-      subscriptionId = `${productId}_${timestamp}_${random}`;
-      console.log('[SUBSCRIPTION API] ⚠️ Purchase ID was null, generated unique ID:', subscriptionId);
+      purchaseIdFinal = `${productId}_${timestamp}_${random}`;
+      console.log('[CONSUMABLE API] ⚠️ Purchase ID was null, generated unique ID:', purchaseIdFinal);
     }
 
-    // Check if it's a trial (only yearly has trial)
-    const isTrial = plan === 'yearly';
-
-    // Calculate subscription dates
     const now = new Date();
-    const startDate = purchaseTime || now.toISOString();
-    const endDate = calculateEndDate(plan, new Date(startDate));
+    const purchaseTimeFinal = purchaseTime || now.toISOString();
+
+    // Check if profile exists and get current credits
+    console.log('[CONSUMABLE API] Checking profile and current credits...');
+    const { data: existingProfile, error: checkError } = await supabase
+      .from('profiles')
+      .select('id, credits_current, name')
+      .eq('id', user.id)
+      .maybeSingle();
 
     // Get user's name/email for the name field
-    // Try multiple sources for Google OAuth and other providers
-    const userName = user?.user_metadata?.full_name ||
+    // For existing profiles (including guests), use the existing name
+    const userName = existingProfile?.name ||
+                    user?.user_metadata?.full_name ||
                     user?.user_metadata?.name ||
                     user?.user_metadata?.display_name ||
                     user?.identities?.[0]?.identity_data?.full_name ||
@@ -138,56 +130,50 @@ export async function updateSubscriptionInProfile(
                     user?.email?.split('@')[0] ||
                     'User';
 
-    console.log('[SUBSCRIPTION API] Extracted user name:', userName);
+    console.log('[CONSUMABLE API] Extracted user name:', userName);
 
-    // Prepare subscription data with all necessary fields
-    // Using PLAN_CONFIG as single source of truth
-    const subscriptionData = {
+    if (checkError && checkError.code !== 'PGRST116') {
+      console.error('[CONSUMABLE API] ❌ Error checking profile:', JSON.stringify(checkError, null, 2));
+      throw checkError;
+    }
+
+    const currentCredits = existingProfile?.credits_current || 0;
+    const newTotalCredits = currentCredits + creditsToAdd;
+
+    // Denominator logic: Set to pack size, unless current > pack size, then match current
+    const newMaxCredits = newTotalCredits > creditsToAdd ? newTotalCredits : creditsToAdd;
+
+    console.log('[CONSUMABLE API] Credits: current =', currentCredits, '+ adding =', creditsToAdd, '= new total =', newTotalCredits);
+    console.log('[CONSUMABLE API] Max credits set to:', newMaxCredits, '(pack size:', creditsToAdd, ')');
+
+    // Prepare consumable purchase data
+    const purchaseData = {
       subscription_plan: plan,
-      subscription_id: subscriptionId,
+      subscription_id: purchaseIdFinal,
       price: price,
-      purchase_time: startDate,
-      is_pro_version: true, // Always true for any paid plan
-      is_trial_version: isTrial,
-      trial_end_date: isTrial ? calculateTrialEndDate() : null,
-      credits_current: credits_max,
-      credits_max: credits_max,
-      last_credit_reset: startDate,
-      subscription_start_date: startDate,
-      subscription_end_date: endDate.toISOString(),
+      purchase_time: purchaseTimeFinal,
+      is_pro_version: true, // Set to true when they have credits
+      credits_current: newTotalCredits,
+      credits_max: newMaxCredits, // Pack size, or current if current > pack size
       product_id: productId,
       name: userName,
       email: user?.email || null,
     };
 
-    console.log('[SUBSCRIPTION API] ✅ Subscription data prepared from PLAN_CONFIG');
-    console.log('[SUBSCRIPTION API] Data:', JSON.stringify(subscriptionData, null, 2));
+    console.log('[CONSUMABLE API] ✅ Purchase data prepared from PLAN_CONFIG');
+    console.log('[CONSUMABLE API] Data:', JSON.stringify(purchaseData, null, 2));
 
-    // Check if profile exists
-    console.log('[SUBSCRIPTION API] Checking if profile exists...');
-    const { data: existingProfile, error: checkError } = await supabase
-      .from('profiles')
-      .select('id')
-      .eq('id', user.id)
-      .maybeSingle();
-
-    if (checkError && checkError.code !== 'PGRST116') {
-      console.error('[SUBSCRIPTION API] ❌ Error checking profile:', JSON.stringify(checkError, null, 2));
-      throw checkError;
-    }
-
-    console.log('[SUBSCRIPTION API] Profile exists:', !!existingProfile);
+    console.log('[CONSUMABLE API] Profile exists:', !!existingProfile);
+    console.log('[CONSUMABLE API] Profile ID:', existingProfile?.id);
 
     if (!existingProfile) {
-      // Profile doesn't exist, create it first
-      console.log('[SUBSCRIPTION API] Creating new profile for user:', user.id);
+      // Profile doesn't exist, create it
+      console.log('[CONSUMABLE API] ⚠️ Creating new profile for user:', user.id);
       const insertData = {
         id: user.id,
-        email: user.email,
-        name: userName,
-        ...subscriptionData
+        ...purchaseData
       };
-      console.log('[SUBSCRIPTION API] Insert data:', JSON.stringify(insertData, null, 2));
+      console.log('[CONSUMABLE API] Insert data:', JSON.stringify(insertData, null, 2));
 
       const { data: insertResult, error: insertError } = await supabase
         .from('profiles')
@@ -195,44 +181,41 @@ export async function updateSubscriptionInProfile(
         .select();
 
       if (insertError) {
-        console.error('[SUBSCRIPTION API] ❌ Insert error:', JSON.stringify(insertError, null, 2));
-        console.error('[SUBSCRIPTION API] ❌ Error code:', insertError.code);
-        console.error('[SUBSCRIPTION API] ❌ Error message:', insertError.message);
-        console.error('[SUBSCRIPTION API] ❌ Error details:', insertError.details);
-        console.error('[SUBSCRIPTION API] ❌ Error hint:', insertError.hint);
+        console.error('[CONSUMABLE API] ❌ Insert error:', JSON.stringify(insertError, null, 2));
         throw new Error(`Failed to create profile: ${insertError.message} (${insertError.code})`);
       }
-      console.log('[SUBSCRIPTION API] ✅ Profile created successfully:', insertResult);
+      console.log('[CONSUMABLE API] ✅ Profile created successfully:', insertResult);
     } else {
-      // Profile exists, update it
-      console.log('[SUBSCRIPTION API] Updating existing profile...');
-      console.log('[SUBSCRIPTION API] Update data:', JSON.stringify(subscriptionData, null, 2));
+      // Profile exists, update credits (ADD to existing)
+      console.log('[CONSUMABLE API] 📝 Updating existing profile with new credits...');
+      console.log('[CONSUMABLE API] Profile user ID:', user.id);
+      console.log('[CONSUMABLE API] Update data:', JSON.stringify(purchaseData, null, 2));
 
       const { data: updateResult, error: updateError } = await supabase
         .from('profiles')
-        .update(subscriptionData)
+        .update(purchaseData)
         .eq('id', user.id)
         .select();
 
       if (updateError) {
-        console.error('[SUBSCRIPTION API] ❌ Update error:', JSON.stringify(updateError, null, 2));
-        console.error('[SUBSCRIPTION API] ❌ Error code:', updateError.code);
-        console.error('[SUBSCRIPTION API] ❌ Error message:', updateError.message);
-        console.error('[SUBSCRIPTION API] ❌ Error details:', updateError.details);
-        console.error('[SUBSCRIPTION API] ❌ Error hint:', updateError.hint);
+        console.error('[CONSUMABLE API] ❌ Update error:', JSON.stringify(updateError, null, 2));
+        console.error('[CONSUMABLE API] Error code:', updateError.code);
+        console.error('[CONSUMABLE API] Error message:', updateError.message);
+        console.error('[CONSUMABLE API] Error details:', updateError.details);
         throw new Error(`Failed to update profile: ${updateError.message} (${updateError.code})`);
       }
-      console.log('[SUBSCRIPTION API] ✅ Profile updated successfully:', updateResult);
+      console.log('[CONSUMABLE API] ✅ Profile updated successfully!');
+      console.log('[CONSUMABLE API] Update result:', JSON.stringify(updateResult, null, 2));
     }
 
-    console.log('[SUBSCRIPTION API] ========== UPDATE COMPLETE ==========');
+    console.log('[CONSUMABLE API] ========== PURCHASE COMPLETE ==========');
   } catch (error: any) {
-    console.error('[SUBSCRIPTION API] ❌❌❌ FATAL ERROR ❌❌❌');
-    console.error('[SUBSCRIPTION API] Error type:', typeof error);
-    console.error('[SUBSCRIPTION API] Error message:', error?.message || 'Unknown error');
-    console.error('[SUBSCRIPTION API] Error stack:', error?.stack);
-    console.error('[SUBSCRIPTION API] Full error:', JSON.stringify(error, null, 2));
-    console.error('[SUBSCRIPTION API] ========================================');
+    console.error('[CONSUMABLE API] ❌❌❌ FATAL ERROR ❌❌❌');
+    console.error('[CONSUMABLE API] Error type:', typeof error);
+    console.error('[CONSUMABLE API] Error message:', error?.message || 'Unknown error');
+    console.error('[CONSUMABLE API] Error stack:', error?.stack);
+    console.error('[CONSUMABLE API] Full error:', JSON.stringify(error, null, 2));
+    console.error('[CONSUMABLE API] ========================================');
     throw error;
   }
 }

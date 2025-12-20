@@ -23,11 +23,18 @@ export default function LoginScreen() {
       const data = await signInEmail(email, password);
 
       if (data.user) {
+        // For existing users logging in, mark onboarding as complete
+        const { completeOnboarding } = require('../src/features/auth/api');
+        try {
+          await completeOnboarding();
+        } catch (onboardingError) {
+          // Don't block login if onboarding marking fails
+        }
+        
         router.push('/(tabs)/generate');
       }
 
     } catch (error: any) {
-      console.error('Login error:', error);
       Alert.alert('Login Error', error.message || 'Invalid email or password.');
     } finally {
       setIsLoading(false);
@@ -41,12 +48,19 @@ export default function LoginScreen() {
       const data = await signInWithApple();
 
       if (data.user) {
+        // For existing users logging in, mark onboarding as complete
+        const { completeOnboarding } = require('../src/features/auth/api');
+        try {
+          await completeOnboarding();
+        } catch (onboardingError) {
+          // Don't block login if onboarding marking fails
+        }
+        
         // Successfully signed in, navigate to main app
         router.push('/(tabs)/generate');
       }
 
     } catch (error: any) {
-      console.error('Apple sign in error:', error);
       if (error.message === 'Sign in was canceled') {
         // User canceled, don't show error
         return;
@@ -81,7 +95,6 @@ export default function LoginScreen() {
               }
 
             } catch (error: any) {
-              console.error('Google sign in error:', error);
               if (error.message === 'Sign in was canceled') {
                 // User canceled, don't show error
                 return;

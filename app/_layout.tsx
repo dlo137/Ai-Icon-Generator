@@ -2,6 +2,7 @@ import '../polyfills';
 import { Stack, useRouter } from 'expo-router';
 import { useEffect } from 'react';
 import { Alert, Linking, LogBox } from 'react-native';
+import { CreditsProvider } from '../src/contexts/CreditsContext';
 
 // Suppress media library warning and NitroModules error for Expo Go
 LogBox.ignoreLogs([
@@ -180,5 +181,9 @@ function RootLayoutNav() {
 }
 
 export default function RootLayout() {
-  return <RootLayoutNav />;
+  return (
+    <CreditsProvider>
+      <RootLayoutNav />
+    </CreditsProvider>
+  );
 }

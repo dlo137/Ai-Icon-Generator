@@ -114,36 +114,35 @@ export const getCredits = async (): Promise<CreditsInfo> => {
       console.log('Could not fetch from Supabase, using local cache:', supabaseError);
     }
 
-    // Fallback to local storage if Supabase fails
+    // Fallback to direct Supabase profile query if edge function fails
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('credits_current, credits_max')
+          .eq('id', session.user.id)
+          .single();
+
+        if (!profileError && profileData) {
+          const credits: CreditsInfo = {
+            current: profileData.credits_current || 0,
+            max: profileData.credits_max || 0
+          };
+
+          // Cache locally
+          await saveCredits(credits);
+          return credits;
+        }
+      }
+    } catch (profileError) {
+      console.log('Could not fetch from profile, using local cache:', profileError);
+    }
+
+    // Final fallback to local storage
     const stored = await AsyncStorage.getItem(CREDITS_KEY);
     if (stored) {
-      const credits = JSON.parse(stored);
-
-      // Check if we need to update max credits based on current subscription
-      let correctMaxCredits = 0; // No free plan - requires subscription
-
-      try {
-        const supabaseSubInfo = await getSupabaseSubscriptionInfo();
-        if (supabaseSubInfo && supabaseSubInfo.is_pro_version) {
-          if (supabaseSubInfo.subscription_plan === 'yearly') {
-            correctMaxCredits = 90;
-          } else if (supabaseSubInfo.subscription_plan === 'monthly') {
-            correctMaxCredits = 75;
-          } else if (supabaseSubInfo.subscription_plan === 'weekly') {
-            correctMaxCredits = 10;
-          }
-        }
-      } catch (error) {
-        console.log('Could not fetch Supabase subscription in getCredits');
-      }
-
-      // If max credits don't match subscription, reset credits
-      if (credits.max !== correctMaxCredits) {
-        await resetCredits();
-        return await getCredits(); // Recursively get the updated credits
-      }
-
-      return credits;
+      return JSON.parse(stored);
     }
 
     // Initialize with no free credits

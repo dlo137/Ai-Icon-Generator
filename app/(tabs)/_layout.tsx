@@ -1,22 +1,78 @@
 import { Tabs, useRouter, useFocusEffect } from 'expo-router';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { ModalProvider, useModal } from '../../src/contexts/ModalContext';
-import { CreditsProvider, useCredits } from '../../src/contexts/CreditsContext';
+import { useCredits } from '../../src/contexts/CreditsContext';
 import HeaderLeft from '../../src/components/HeaderLeft';
 import { useState, useEffect, useCallback } from 'react';
 import { getSubscriptionInfo, SubscriptionInfo, initializeCredits } from '../../src/utils/subscriptionStorage';
+import { checkUserSession } from '../../src/utils/sessionManager';
 
 function TabsContent() {
   const router = useRouter();
   const { setIsBillingModalVisible } = useModal();
   const { credits, refreshCredits } = useCredits();
   const [subscriptionInfo, setSubscriptionInfo] = useState<SubscriptionInfo | null>(null);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
   useEffect(() => {
-    initializeCredits();
-    loadSubscriptionInfo();
-    refreshCredits();
+    checkAuthAndInitialize();
   }, []);
+
+  const checkAuthAndInitialize = async () => {
+    try {
+      // Check authentication status first
+      const sessionInfo = await checkUserSession();
+      
+      // Also check onboarding completion to avoid redirecting completed users
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      const hasCompletedOnboarding = await AsyncStorage.getItem('hasCompletedOnboarding');
+      
+      console.log('[TABS] Auth check:', {
+        authenticated: sessionInfo.isAuthenticated,
+        isGuest: sessionInfo.isGuest,
+        hasCompletedOnboarding: hasCompletedOnboarding === 'true'
+      });
+      
+      // If not authenticated AND hasn't completed onboarding, redirect to welcome
+      if (!sessionInfo.isAuthenticated && hasCompletedOnboarding !== 'true') {
+        console.log('[TABS] No valid session and no onboarding completion - redirecting to welcome');
+        router.replace('/');
+        return;
+      }
+      
+      // If completed onboarding but no current session, allow access (session might have expired)
+      if (!sessionInfo.isAuthenticated && hasCompletedOnboarding === 'true') {
+        console.log('[TABS] Onboarding completed but no active session - allowing access');
+        // Don't redirect - let user access the app
+      }
+      
+      console.log('[TABS] User has access - initializing app');
+      
+      // Initialize credits and subscription info
+      await initializeCredits();
+      await loadSubscriptionInfo();
+      await refreshCredits();
+      
+      setIsCheckingAuth(false);
+    } catch (error) {
+      console.error('[TABS] Error during auth check:', error);
+      
+      // Even on error, check if onboarding was completed
+      try {
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        const hasCompletedOnboarding = await AsyncStorage.getItem('hasCompletedOnboarding');
+        if (hasCompletedOnboarding === 'true') {
+          console.log('[TABS] Error occurred but onboarding completed - allowing access');
+          setIsCheckingAuth(false);
+          return;
+        }
+      } catch (fallbackError) {
+        console.error('[TABS] Fallback onboarding check failed:', fallbackError);
+      }
+      
+      router.replace('/');
+    }
+  };
 
   // Refresh credits when any tab gains focus
   useFocusEffect(
@@ -35,6 +91,15 @@ function TabsContent() {
     router.push('/(tabs)/profile');
     setTimeout(() => setIsBillingModalVisible(true), 100);
   };
+
+  // Show loading while checking authentication
+  if (isCheckingAuth) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000000' }}>
+        <Text style={{ color: '#ffffff', fontSize: 16 }}>Loading...</Text>
+      </View>
+    );
+  }
 
   return (
     <Tabs
@@ -75,7 +140,7 @@ function TabsContent() {
               textAlign: 'center',
               letterSpacing: 0.2,
             }}>
-              {credits.current}/{credits.max} images
+              {credits.current}/{credits.max} icons
             </Text>
           </View>
         ),
@@ -171,10 +236,8 @@ function TabsContent() {
 
 export default function TabsLayout() {
   return (
-    <CreditsProvider>
-      <ModalProvider>
-        <TabsContent />
-      </ModalProvider>
-    </CreditsProvider>
+    <ModalProvider>
+      <TabsContent />
+    </ModalProvider>
   );
 }

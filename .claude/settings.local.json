@@ -60,7 +60,10 @@
       "Bash(del \"C:\\Users\\aidaw\\Desktop\\Code\\IconGenerator\\supabase\\migrations\\20241215000001_add_subscription_columns.sql\")",
       "Bash(wc:*)",
       "Bash(del \"C:\\Users\\aidaw\\Desktop\\Code\\IconGenerator\\services\\IAPService.backup.ts\")",
-      "Bash(head:*)"
+      "Bash(head:*)",
+      "Bash(netstat:*)",
+      "Bash(node test-anonymous-auth.js:*)",
+      "Bash(del:*)"
     ],
     "deny": [],
     "ask": []

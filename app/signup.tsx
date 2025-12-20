@@ -2,7 +2,7 @@ import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, KeyboardAvo
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
 import { useRouter } from 'expo-router';
-import { signUpEmail, signInWithApple, signInWithGoogle } from '../src/features/auth/api';
+import { signUpEmail, signInWithApple, signInWithGoogle, completeOnboarding } from '../src/features/auth/api';
 import { createGuestSession, isGuestSession, upgradeGuestToAccount } from '../src/utils/guestSession';
 
 export default function SignUpScreen() {
@@ -30,6 +30,10 @@ export default function SignUpScreen() {
       const data = await signUpEmail(email, password, name);
 
       if (data.user) {
+        // Clear any existing guest session since this is now a regular user
+        const { clearGuestSession } = require('../src/utils/guestSession');
+        await clearGuestSession();
+        
         // Check if user was a guest and migrate data
         const wasGuest = await isGuestSession();
 
@@ -46,6 +50,9 @@ export default function SignUpScreen() {
           }
         }
 
+        // Mark onboarding as completed for new user
+        await completeOnboarding();
+        
         router.push('/loadingaccount');
       }
 
@@ -64,6 +71,13 @@ export default function SignUpScreen() {
       const data = await signInWithApple();
 
       if (data.user) {
+        // Clear any existing guest session since this is now a regular user
+        const { clearGuestSession } = require('../src/utils/guestSession');
+        await clearGuestSession();
+        
+        // Mark onboarding as completed for Apple user
+        await completeOnboarding();
+        
         // Successfully signed in, navigate to loading account screen
         router.push('/loadingaccount');
       }
@@ -98,7 +112,14 @@ export default function SignUpScreen() {
             try {
               const data = await signInWithGoogle();
 
-              if (data.user) {
+              if (data.session?.user) {
+                // Clear any existing guest session since this is now a regular user
+                const { clearGuestSession } = require('../src/utils/guestSession');
+                await clearGuestSession();
+                
+                // Mark onboarding as completed for Google user
+                await completeOnboarding();
+                
                 // Successfully signed in, navigate to loading account screen
                 router.push('/loadingaccount');
               }
@@ -122,15 +143,38 @@ export default function SignUpScreen() {
   const handleGuestMode = async () => {
     setIsLoading(true);
 
-    try {
-      // Create guest session
-      await createGuestSession();
+    try {      
+      // Create guest session (this will create Supabase user + profile)
+      const guestSession = await createGuestSession();      
+      // Set up guest with 3 free credits in local storage (backup)
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      await AsyncStorage.setItem('guest_credits', JSON.stringify({
+        current: 3,
+        max: 3,
+        lastResetDate: new Date().toISOString(),
+        plan: 'free'
+      }));
 
-      // Navigate to loading screen first (like authenticated users)
+      // Mark onboarding as complete for guest
+      await AsyncStorage.setItem('hasCompletedOnboarding', 'true');
+
+      // Small delay to ensure all operations complete
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      // Navigate to loading account screen (same flow as other signups)
       router.push('/loadingaccount');
-    } catch (error: any) {
-      console.error('Guest mode error:', error);
-      Alert.alert('Error', 'Failed to start guest mode. Please try again.');
+    } catch (error: any) {      
+      // Clear the creation flag in case it got stuck
+      try {
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        await AsyncStorage.removeItem('creating_guest_session');
+      } catch (cleanupError) {
+      }
+      
+      Alert.alert(
+        'Guest Mode Failed', 
+        `Unable to start guest mode: ${error?.message || 'Unknown error'}\n\nYou can try signing up with an email instead.`
+      );
     } finally {
       setIsLoading(false);
     }
@@ -189,15 +233,6 @@ export default function SignUpScreen() {
                 {isLoading ? 'Signing up...' : 'Sign Up With Google'}
               </Text>
             </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.guestButton}
-            onPress={handleGuestMode}
-            disabled={isLoading}
-          >
-            <Text style={styles.guestButtonText}>Continue as Guest</Text>
-            <Text style={styles.guestButtonSubtext}>Try the app without an account</Text>
           </TouchableOpacity>
 
           <View style={styles.dividerContainer}>
@@ -261,6 +296,14 @@ export default function SignUpScreen() {
             <Text style={styles.signUpButtonText}>
               {isLoading ? 'Creating Account...' : 'Sign Up'}
             </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.guestButton}
+            onPress={handleGuestMode}
+            disabled={isLoading}
+          >
+            <Text style={styles.guestButtonText}>Continue as Guest</Text>
           </TouchableOpacity>
 
           <View style={styles.loginContainer}>
@@ -483,8 +526,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
-    marginTop: 8,
+    marginTop: 16,
+    marginBottom: 24,
   },
   guestButtonText: {
     color: '#93c5fd',

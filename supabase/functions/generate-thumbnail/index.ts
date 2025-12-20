@@ -273,6 +273,14 @@ async function callGeminiImagePreview(prompt: string, subjectImageUrl?: string, 
 
   const appIconRules = `PROFESSIONAL APP ICON DESIGN STANDARDS (obey strictly):
 
+CRITICAL - MULTIPLE DISTINCT VARIATIONS REQUIRED:
+• EACH VARIATION MUST FEATURE A COMPLETELY DIFFERENT ICON/SYMBOL
+• DO NOT repeat the same object, shape, or visual concept across variations
+• For example: if concept is "fitness" - create scale icon, dumbbell icon, running shoe icon (NOT three scale icons)
+• Each variation should represent the concept through a DIFFERENT visual metaphor
+• Use completely different color schemes, styles, and compositions for each variation
+• MANDATORY: Generate distinctly different icons that all relate to the same theme
+
 CRITICAL - FILL ENTIRE CANVAS:
 • ABSOLUTELY NO white borders, white padding, or white margins around the icon
 • The background color/gradient MUST extend to ALL FOUR edges (top, bottom, left, right)
@@ -290,7 +298,7 @@ TECHNICAL REQUIREMENTS:
 
 DESIGN PRINCIPLES:
 • NO people or faces - focus on objects, symbols, or abstract concepts
-• ONE clear symbol or object centered - avoid clutter
+• ONE clear symbol or object centered PER VARIATION - but DIFFERENT symbols for each variation
 • Minimalistic composition - remove unnecessary details
 • Bold, clean shapes with sharp edges
 • Strong visual contrast for instant recognition
@@ -390,7 +398,7 @@ CRITICAL REMINDERS:
       },
       systemInstruction: {
         parts: [{
-          text: "You are an expert app icon designer specializing in iOS and Android app store standards. Create professional, minimalistic icons in 1024x1024 pixels with strong visual impact. CRITICAL: The background must fill the ENTIRE canvas edge-to-edge with NO white borders or padding. Focus on single, clear symbols without people or faces. Use colored or gradient backgrounds that extend to all edges. Design for instant recognition at small sizes with bold shapes, strong contrast, and polished aesthetics."
+          text: "You are an expert app icon designer specializing in iOS and Android app store standards. Create professional, minimalistic icons in 1024x1024 pixels with strong visual impact. CRITICAL: Generate completely different icons for each variation request - use different symbols, objects, colors, and styles. For example, if the concept is 'fitness': create a scale icon, then a dumbbell icon, then a running shoe icon. NEVER repeat the same symbol or visual approach. The background must fill the ENTIRE canvas edge-to-edge with NO white borders or padding. Focus on single, clear symbols without people or faces. Use colored or gradient backgrounds that extend to all edges. Design for instant recognition at small sizes with bold shapes, strong contrast, and polished aesthetics."
         }]
       }
     }),
@@ -578,9 +586,93 @@ serve(async (req: Request) => {
       console.log(`\n🎨 Generating variation ${i}/3...`);
       const randomSeed = Math.floor(Math.random() * 1000000);
 
+      // Create slot-based prompt structure for distinct variations
+      let variationPrompt: string;
+      
+      // App icon design standards for slot-based prompts
+      const appIconRules = `PROFESSIONAL APP ICON DESIGN STANDARDS (obey strictly):
+
+CRITICAL - FILL ENTIRE CANVAS:
+• ABSOLUTELY NO white borders, white padding, or white margins around the icon
+• The background color/gradient MUST extend to ALL FOUR edges (top, bottom, left, right)
+• Fill the ENTIRE 1024×1024 pixel canvas completely - edge to edge
+• Do NOT add any padding, margins, or empty space around the design
+• The background is part of the icon - it must reach every edge
+
+TECHNICAL REQUIREMENTS:
+• 1024×1024 pixels, perfect square 1:1 aspect ratio
+• Full-bleed design: background extends to canvas edges
+• Rounded-rectangle safe zone: keep important elements 10-15% from edges (but background still fills edges)
+• NO borders, frames, strokes, outlines, vignettes, or drop-shadow rims
+• NO black/white bars or letterboxing
+• NO white background unless that's the intentional icon background color
+
+DESIGN PRINCIPLES:
+• NO people or faces - focus on objects, symbols, or abstract concepts
+• ONE clear symbol or object centered PER VARIATION - but DIFFERENT symbols for each variation
+• Minimalistic composition - remove unnecessary details
+• Bold, clean shapes with sharp edges
+• Strong visual contrast for instant recognition
+• Use colored or gradient backgrounds that fill the entire canvas
+• Symmetrical and balanced composition
+• Must be recognizable at small sizes (as small as 29x29px)`;
+      
+      // Use slot-based prompt structure for completely different icons
+      if (i === 1) {
+        variationPrompt = `You will generate THREE DISTINCT app icons based on: "${finalPrompt}"
+
+CRITICAL RULES:
+- Each image MUST use a DIFFERENT symbol or subject.
+- NO symbol, object, or concept may repeat across images.
+- If symbols overlap, the output is invalid.
+
+Primary Icon Requirements:
+- Symbol: [MAIN SYMBOL - most direct representation]
+- Purpose: Core meaning of the concept
+- Style: Modern, bold, centered
+- Background: Edge-to-edge gradient, no borders
+- NO repeated shapes or symbols allowed
+
+${appIconRules}`;
+      } else if (i === 2) {
+        variationPrompt = `You will generate THREE DISTINCT app icons based on: "${finalPrompt}"
+
+CRITICAL RULES:
+- Each image MUST use a DIFFERENT symbol or subject.
+- NO symbol, object, or concept may repeat across images.
+- If symbols overlap, the output is invalid.
+
+Secondary Icon Requirements:
+- Symbol: [RELATED BUT DIFFERENT SYMBOL - alternative interpretation]
+- Purpose: Supporting feature or secondary meaning
+- Style: Clean, minimal, visually distinct from the primary icon
+- Background: Edge-to-edge gradient, no borders
+- MUST be completely different from any previous symbol
+
+${appIconRules}`;
+      } else if (i === 3) {
+        variationPrompt = `You will generate THREE DISTINCT app icons based on: "${finalPrompt}"
+
+CRITICAL RULES:
+- Each image MUST use a DIFFERENT symbol or subject.
+- NO symbol, object, or concept may repeat across images.
+- If symbols overlap, the output is invalid.
+
+Abstract/Creative Icon Requirements:
+- Symbol: [ABSTRACT or METAPHOR SYMBOL - NOT RELATED TO PRIMARY OR SECONDARY]
+- Purpose: Emotional or conceptual representation
+- Style: Artistic, unique, non-literal
+- Background: Edge-to-edge gradient, no borders
+- MUST use completely different visual metaphor
+
+${appIconRules}`;
+      }
+      
+      console.log(`🎯 Variation ${i} slot-based prompt:`, variationPrompt.substring(0, 200) + '...');
+
       const generateWithRetry = () =>
         retryWithBackoff(() =>
-          callGeminiImagePreview(finalPrompt, subjectImageUrl, referenceImageUrls, effectiveBaseImage, isUsingBlankFrame, randomSeed)
+          callGeminiImagePreview(variationPrompt, subjectImageUrl, referenceImageUrls, effectiveBaseImage, isUsingBlankFrame, randomSeed)
         );
 
       const rawImageBytes = await generateWithRetry();

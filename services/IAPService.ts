@@ -11,9 +11,10 @@ import { saveGuestPurchase } from '../src/utils/guestPurchaseStorage';
 import { initializeGuestCredits } from '../src/utils/guestCredits';
 
 // Product IDs - must match App Store Connect / Google Play Console exactly
-const SUBSCRIPTION_SKUS = Platform.OS === 'ios'
-  ? ['ai.icons.weekly', 'ai.icons.monthly', 'ai.icons.yearly']
-  : ['ai.icons.weekly', 'ai.icons.monthly', 'ai.icons.yearly']; // Android uses same IDs
+// CONSUMABLE IAP product IDs
+const CONSUMABLE_SKUS = Platform.OS === 'ios'
+  ? ['starter.15', 'value.45', 'pro.120']
+  : ['starter.15', 'value.45', 'pro.120']; // Android uses same IDs
 
 // Detect Expo Go environment
 const isExpoGo = Constants.executionEnvironment === 'storeClient';
@@ -301,7 +302,36 @@ class IAPService {
       // 4. Initialize guest credits
       await initializeGuestCredits(plan);
 
-      // 5. Update last purchase result
+      // 5. Update Supabase profile if guest has a Supabase user ID
+      const { getGuestSession } = require('../src/utils/guestSession');
+      const guestSession = await getGuestSession();
+
+      console.log('[IAP] Guest session data:', JSON.stringify(guestSession, null, 2));
+
+      if (guestSession?.supabaseUserId) {
+        console.log('[IAP] ========== UPDATING GUEST SUPABASE PROFILE ==========');
+        console.log('[IAP] Guest Supabase User ID:', guestSession.supabaseUserId);
+        console.log('[IAP] Plan:', plan);
+        console.log('[IAP] Purchase ID:', purchaseId);
+        console.log('[IAP] Purchase Time:', purchaseTime);
+
+        // Import updateSubscriptionInProfile to reuse the same logic
+        const { updateSubscriptionInProfile } = require('../src/features/subscription/api');
+
+        try {
+          await updateSubscriptionInProfile(plan, purchaseId, purchaseTime);
+          console.log('[IAP] ✅✅✅ Guest Supabase profile updated successfully! ✅✅✅');
+        } catch (error) {
+          console.error('[IAP] ❌❌❌ Failed to update guest Supabase profile:', error);
+          console.error('[IAP] Error details:', JSON.stringify(error, null, 2));
+          // Don't throw - local storage is already updated, so purchase is safe
+        }
+      } else {
+        console.log('[IAP] ⚠️ Guest has no Supabase user ID - using local storage only');
+        console.log('[IAP] This means guest profile table will NOT be updated');
+      }
+
+      // 6. Update last purchase result
       this.lastPurchaseResult = {
         success: true,
         productId,
@@ -332,24 +362,24 @@ class IAPService {
   }
 
   /**
-   * Detect subscription plan from purchase object
+   * Detect consumable pack from purchase object
    */
   private detectPlanFromPurchase(purchase: any): SubscriptionPlan {
     const productId = (purchase.productId || purchase.productIds?.[0] || '').toLowerCase();
 
     console.log('[IAP] Detecting plan from productId:', productId);
 
-    if (productId.includes('yearly')) {
-      return 'yearly';
-    } else if (productId.includes('monthly')) {
-      return 'monthly';
-    } else if (productId.includes('weekly')) {
-      return 'weekly';
+    if (productId.includes('pro') || productId.includes('200')) {
+      return 'pro';
+    } else if (productId.includes('value') || productId.includes('75')) {
+      return 'value';
+    } else if (productId.includes('starter') || productId.includes('25')) {
+      return 'starter';
     }
 
-    // Default to weekly if no match
-    console.warn('[IAP] Could not detect plan, defaulting to weekly');
-    return 'weekly';
+    // Default to starter if no match
+    console.warn('[IAP] Could not detect plan, defaulting to starter');
+    return 'starter';
   }
 
   /**
@@ -371,12 +401,12 @@ class IAPService {
     }
 
     try {
-      console.log('[IAP] Fetching subscriptions:', SUBSCRIPTION_SKUS);
+      console.log('[IAP] Fetching consumable products:', CONSUMABLE_SKUS);
 
-      // Get subscription products (v14+ API: fetchProducts with type: 'subs')
+      // Get consumable IAP products (v14+ API: fetchProducts with type: 'iap')
       const products = await RNIap.fetchProducts({
-        skus: SUBSCRIPTION_SKUS,
-        type: 'subs'
+        skus: CONSUMABLE_SKUS,
+        type: 'iap'
       });
 
       if (!products) {
@@ -437,18 +467,18 @@ class IAPService {
       // v14+ API: requestPurchase with platform-specific structure
       // Purchases are handled by listeners (event-based, not promise-based)
       if (Platform.OS === 'ios') {
-        // iOS requires both apple and ios properties for compatibility
+        // iOS: Use 'iap' type for consumables
         await RNIap.requestPurchase({
-          type: 'subs',
+          type: 'iap',
           request: {
             apple: { sku: productId },
             ios: { sku: productId }, // Also set deprecated property for compatibility
           },
         });
       } else {
-        // Android
+        // Android: Use 'iap' type for consumables
         await RNIap.requestPurchase({
-          type: 'subs',
+          type: 'iap',
           request: {
             google: { skus: [productId] },
             android: { skus: [productId] }, // Also set deprecated property
