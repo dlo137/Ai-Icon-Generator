@@ -383,7 +383,7 @@ class IAPService {
   }
 
   /**
-   * Get available subscription products
+   * Get available consumable IAP products
    * Returns products from App Store Connect / Google Play Console
    * Normalizes v14 products to have 'productId' property for compatibility
    */
@@ -402,15 +402,30 @@ class IAPService {
 
     try {
       console.log('[IAP] Fetching consumable products:', CONSUMABLE_SKUS);
+      console.log('[IAP] Platform:', Platform.OS);
+      console.log('[IAP] Expected product count:', CONSUMABLE_SKUS.length);
 
-      // Get consumable IAP products (v14+ API: fetchProducts with type: 'iap')
-      const products = await RNIap.fetchProducts({
-        skus: CONSUMABLE_SKUS,
-        type: 'iap'
+      // ✅ NEW - v14+ API syntax matching requestPurchase
+      const products = await RNIap.getProducts({
+        type: 'iap',
+        request: {
+          apple: { skus: CONSUMABLE_SKUS },
+          google: { skus: CONSUMABLE_SKUS },
+          ios: { skus: CONSUMABLE_SKUS },
+          android: { skus: CONSUMABLE_SKUS }
+        },
       });
 
-      if (!products) {
-        console.error('[IAP] No products returned');
+      console.log('[IAP] Raw products response:', JSON.stringify(products, null, 2));
+
+      if (!products || products.length === 0) {
+        console.error('[IAP] No products returned or empty array');
+        console.error('[IAP] This usually means:');
+        console.error('[IAP]   1. Product IDs do not match App Store Connect/Google Play Console');
+        console.error('[IAP]   2. Products are not approved for sale');
+        console.error('[IAP]   3. Wrong product type (subscriptions vs consumables)');
+        console.error('[IAP]   4. Bundle ID mismatch');
+        console.error('[IAP]   5. Not signed in with test account (sandbox)');
         return [];
       }
 
@@ -618,33 +633,33 @@ class IAPService {
   private getMockProducts(): any[] {
     return [
       {
-        productId: 'ai.icons.weekly',
-        id: 'ai.icons.weekly',
-        title: 'Weekly Plan (Mock)',
-        description: 'Mock weekly subscription',
-        price: '$2.99',
-        localizedPrice: '$2.99',
-        displayPrice: '$2.99',
+        productId: 'starter.15',
+        id: 'starter.15',
+        title: 'Starter Pack (Mock)',
+        description: 'Mock starter pack - 15 credits',
+        price: '$1.99',
+        localizedPrice: '$1.99',
+        displayPrice: '$1.99',
         currency: 'USD',
       },
       {
-        productId: 'ai.icons.monthly',
-        id: 'ai.icons.monthly',
-        title: 'Monthly Plan (Mock)',
-        description: 'Mock monthly subscription',
+        productId: 'value.45',
+        id: 'value.45',
+        title: 'Value Pack (Mock)',
+        description: 'Mock value pack - 45 credits',
         price: '$5.99',
         localizedPrice: '$5.99',
         displayPrice: '$5.99',
         currency: 'USD',
       },
       {
-        productId: 'ai.icons.yearly',
-        id: 'ai.icons.yearly',
-        title: 'Yearly Plan (Mock)',
-        description: 'Mock yearly subscription',
-        price: '$59.99',
-        localizedPrice: '$59.99',
-        displayPrice: '$59.99',
+        productId: 'pro.120',
+        id: 'pro.120',
+        title: 'Pro Pack (Mock)',
+        description: 'Mock pro pack - 120 credits',
+        price: '$14.99',
+        localizedPrice: '$14.99',
+        displayPrice: '$14.99',
         currency: 'USD',
       },
     ];

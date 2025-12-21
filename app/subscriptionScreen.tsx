@@ -159,25 +159,40 @@ export default function SubscriptionScreen() {
 
   const fetchProducts = async (showErrors = false) => {
     if (!isIAPAvailable) {
+      console.log('[SubscriptionScreen] IAP not available');
       if (showErrors) {
         Alert.alert('IAP Unavailable', 'In-app purchases are not available on this platform.');
       }
       return [];
     }
     try {
+      console.log('[SubscriptionScreen] Fetching products...');
+      console.log('[SubscriptionScreen] Expected product IDs:', PRODUCT_IDS);
       setLoadingProducts(true);
       const results = await IAPService.getProducts();
+      console.log('[SubscriptionScreen] Products returned:', results?.length || 0);
+      console.log('[SubscriptionScreen] Products:', JSON.stringify(results, null, 2));
+      
       if (results?.length) {
         setProducts(results);
+        console.log('[SubscriptionScreen] ✅ Products loaded successfully');
         return results;
       } else {
+        console.error('[SubscriptionScreen] ❌ No products returned');
         setProducts([]);
         if (showErrors) {
-          Alert.alert('Products Unavailable', 'Could not load subscription products. Please check your internet connection and try again.');
+          Alert.alert('Products Unavailable', `Could not load consumable products. Please check:
+          
+• Your internet connection
+• App Store Connect/Google Play Console setup
+• Product IDs match exactly: ${Object.values(PRODUCT_IDS).join(', ')}
+• Products are approved for sale
+• Bundle ID matches store configuration`);
         }
         return [];
       }
     } catch (err) {
+      console.error('[SubscriptionScreen] Error fetching products:', err);
       setProducts([]);
       if (showErrors) {
         Alert.alert('Error', 'Failed to load products: ' + String(err instanceof Error ? err.message : err));
@@ -200,21 +215,49 @@ export default function SubscriptionScreen() {
       return;
     }
 
+    console.log('[SubscriptionScreen] handleContinue called');
+    console.log('[SubscriptionScreen] Selected plan:', selectedPlan);
+    console.log('[SubscriptionScreen] Current products count:', products.length);
+
     const list = products.length ? products : await fetchProducts(true);
+    console.log('[SubscriptionScreen] Final products list length:', list.length);
+    
     const planId = PRODUCT_IDS[selectedPlan];
-    const product = list.find(p => p.productId === planId);
+    console.log('[SubscriptionScreen] Looking for product ID:', planId);
+    console.log('[SubscriptionScreen] Available product IDs:', list.map(p => p.productId || p.id));
+    
+    const product = list.find(p => (p.productId === planId) || (p.id === planId));
+    console.log('[SubscriptionScreen] Found product:', product ? 'YES' : 'NO');
+    
+    if (product) {
+      console.log('[SubscriptionScreen] Product details:', JSON.stringify(product, null, 2));
+    }
 
     if (!product) {
+      console.error('[SubscriptionScreen] ❌ Product not found!');
+      console.error('[SubscriptionScreen] Searched for:', planId);
+      console.error('[SubscriptionScreen] In products:', list.map(p => ({ id: p.id, productId: p.productId })));
+      
       Alert.alert(
         'Plan not available',
-        'We couldn\'t find that plan. Please check your internet connection and try again.'
+        `We couldn't find the ${selectedPlan} plan (${planId}).
+        
+Available products: ${list.map(p => p.productId || p.id).join(', ') || 'None'}
+
+This usually means:
+• Product IDs don't match App Store Connect/Google Play Console
+• Products not approved for sale  
+• Bundle ID mismatch
+• Wrong product type (subscription vs consumable)
+
+Please check your internet connection and try again.`
       );
       return;
     }
 
     // Set the current purchase attempt BEFORE starting the purchase
     setCurrentPurchaseAttempt(selectedPlan);
-    await handlePurchase(product.productId);
+    await handlePurchase(product.productId || product.id);
   };
 
   const handleContinueAsGuest = async () => {
@@ -790,6 +833,12 @@ export default function SubscriptionScreen() {
               <Text style={styles.debugText}>
                 Products Loaded: {products.length}
               </Text>
+              <TouchableOpacity
+                style={styles.debugButton}
+                onPress={() => fetchProducts(true)}
+              >
+                <Text style={styles.debugButtonText}>Fetch Products (Show Errors)</Text>
+              </TouchableOpacity>
             </View>
 
             <View style={styles.debugSection}>
@@ -925,15 +974,15 @@ export default function SubscriptionScreen() {
         </View>
       )}
 
-      {/* Debug Button - Commented out for production */}
-      {/* {!showDebug && (
+      {/* Debug Button - Enabled for IAP debugging */}
+      {!showDebug && (
         <TouchableOpacity
           style={styles.showDebugButton}
           onPress={() => setShowDebug(true)}
         >
           <Text style={styles.showDebugText}>🔧</Text>
         </TouchableOpacity>
-      )} */}
+      )}
     </LinearGradient>
   );
 }
@@ -1219,6 +1268,19 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     borderColor: 'rgba(30, 64, 175, 0.3)',
+  },
+  debugButton: {
+    backgroundColor: 'rgba(30, 64, 175, 0.2)',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    marginTop: 8,
+  },
+  debugButtonText: {
+    color: '#60a5fa',
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   debugSectionTitle: {
     fontSize: 13,
