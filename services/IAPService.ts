@@ -13,8 +13,8 @@ import { initializeGuestCredits } from '../src/utils/guestCredits';
 // Product IDs - must match App Store Connect / Google Play Console exactly
 // CONSUMABLE IAP product IDs
 const CONSUMABLE_SKUS = Platform.OS === 'ios'
-  ? ['starter.15', 'value.45', 'pro.120']
-  : ['starter.15', 'value.45', 'pro.120']; // Android uses same IDs
+  ? ['starter.25', 'value.75', 'pro.200']
+  : ['starter.25', 'value.75', 'pro.200']; // Android uses same IDs
 
 // Detect Expo Go environment
 const isExpoGo = Constants.executionEnvironment === 'storeClient';
@@ -369,12 +369,12 @@ class IAPService {
 
     console.log('[IAP] Detecting plan from productId:', productId);
 
-    // Match actual product IDs: starter.15, value.45, pro.120
-    if (productId.includes('pro') || productId.includes('120')) {
+    // Match actual product IDs: starter.25, value.75, pro.200
+    if (productId.includes('pro') || productId.includes('200')) {
       return 'pro';
-    } else if (productId.includes('value') || productId.includes('45')) {
+    } else if (productId.includes('value') || productId.includes('75')) {
       return 'value';
-    } else if (productId.includes('starter') || productId.includes('15')) {
+    } else if (productId.includes('starter') || productId.includes('25')) {
       return 'starter';
     }
 
@@ -609,8 +609,8 @@ class IAPService {
   private getMockProducts(): any[] {
     return [
       {
-        productId: 'starter.15',
-        id: 'starter.15',
+        productId: 'starter.25',
+        id: 'starter.25',
         title: 'Starter Pack (Mock)',
         description: 'Mock starter pack - 15 credits',
         price: '$1.99',
@@ -619,8 +619,8 @@ class IAPService {
         currency: 'USD',
       },
       {
-        productId: 'value.45',
-        id: 'value.45',
+        productId: 'value.75',
+        id: 'value.75',
         title: 'Value Pack (Mock)',
         description: 'Mock value pack - 45 credits',
         price: '$5.99',
@@ -629,8 +629,8 @@ class IAPService {
         currency: 'USD',
       },
       {
-        productId: 'pro.120',
-        id: 'pro.120',
+        productId: 'pro.200',
+        id: 'pro.200',
         title: 'Pro Pack (Mock)',
         description: 'Mock pro pack - 120 credits',
         price: '$14.99',
