@@ -1269,19 +1269,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(30, 64, 175, 0.3)',
   },
-  debugButton: {
-    backgroundColor: 'rgba(30, 64, 175, 0.2)',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 6,
-    marginTop: 8,
-  },
-  debugButtonText: {
-    color: '#60a5fa',
-    fontSize: 12,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
   debugSectionTitle: {
     fontSize: 13,
     fontWeight: 'bold',

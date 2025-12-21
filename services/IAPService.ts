@@ -369,11 +369,12 @@ class IAPService {
 
     console.log('[IAP] Detecting plan from productId:', productId);
 
-    if (productId.includes('pro') || productId.includes('200')) {
+    // Match actual product IDs: starter.15, value.45, pro.120
+    if (productId.includes('pro') || productId.includes('120')) {
       return 'pro';
-    } else if (productId.includes('value') || productId.includes('75')) {
+    } else if (productId.includes('value') || productId.includes('45')) {
       return 'value';
-    } else if (productId.includes('starter') || productId.includes('25')) {
+    } else if (productId.includes('starter') || productId.includes('15')) {
       return 'starter';
     }
 
@@ -405,16 +406,8 @@ class IAPService {
       console.log('[IAP] Platform:', Platform.OS);
       console.log('[IAP] Expected product count:', CONSUMABLE_SKUS.length);
 
-      // ✅ NEW - v14+ API syntax matching requestPurchase
-      const products = await RNIap.getProducts({
-        type: 'iap',
-        request: {
-          apple: { skus: CONSUMABLE_SKUS },
-          google: { skus: CONSUMABLE_SKUS },
-          ios: { skus: CONSUMABLE_SKUS },
-          android: { skus: CONSUMABLE_SKUS }
-        },
-      });
+      // ✅ CORRECT - react-native-iap API for consumables
+      const products = await RNIap.fetchProducts({ skus: CONSUMABLE_SKUS });
 
       console.log('[IAP] Raw products response:', JSON.stringify(products, null, 2));
 
@@ -450,9 +443,9 @@ class IAPService {
   }
 
   /**
-   * Purchase a subscription
-   * @param productId - Product SKU (e.g., 'ai.icons.yearly')
-   * @param plan - The plan the user selected (weekly/monthly/yearly)
+   * Purchase a consumable product
+   * @param productId - Product SKU (e.g., 'starter.15', 'value.45', 'pro.120')
+   * @param plan - The plan the user selected (starter/value/pro)
    */
   async purchaseProduct(productId: string, plan: SubscriptionPlan): Promise<void> {
     // Store the plan the user selected - this is our source of truth
@@ -479,27 +472,10 @@ class IAPService {
         });
       }
 
-      // v14+ API: requestPurchase with platform-specific structure
+      // ✅ UPDATED - react-native-iap v14+ API uses 'sku' string (not array)
       // Purchases are handled by listeners (event-based, not promise-based)
-      if (Platform.OS === 'ios') {
-        // iOS: Use 'iap' type for consumables
-        await RNIap.requestPurchase({
-          type: 'iap',
-          request: {
-            apple: { sku: productId },
-            ios: { sku: productId }, // Also set deprecated property for compatibility
-          },
-        });
-      } else {
-        // Android: Use 'iap' type for consumables
-        await RNIap.requestPurchase({
-          type: 'iap',
-          request: {
-            google: { skus: [productId] },
-            android: { skus: [productId] }, // Also set deprecated property
-          },
-        });
-      }
+      // Type assertion needed due to incorrect type definitions in react-native-iap
+      await RNIap.requestPurchase({ sku: productId } as any);
 
       // Success/error will be handled by listeners
     } catch (error: any) {
