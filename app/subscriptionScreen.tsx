@@ -937,7 +937,7 @@ Please check your internet connection and try again.`
 
             {debugInfo.purchaseAttempt && (
               <View style={styles.debugSection}>
-                <Text style={styles.debugSectionTitle}>🛒 Purchase Attempt Details</Text>
+                <Text style={styles.debugSectionTitle}>🛒 Purchase Attempt Details (Sent)</Text>
                 <Text style={styles.debugText}>
                   Selected Plan: {debugInfo.purchaseAttempt.selectedPlan}
                 </Text>
@@ -969,6 +969,57 @@ Please check your internet connection and try again.`
                 <Text style={styles.debugSectionTitle}>Full Product:</Text>
                 <Text style={[styles.debugText, styles.debugCode]}>
                   {debugInfo.purchaseAttempt.productObject?.fullObject || 'No data'}
+                </Text>
+              </View>
+            )}
+
+            {debugInfo.iapServiceReceived && (
+              <View style={styles.debugSection}>
+                <Text style={styles.debugSectionTitle}>📥 IAP Service Received</Text>
+                <Text style={styles.debugText}>
+                  Product ID: {debugInfo.iapServiceReceived.productIdValue || 'undefined'}
+                </Text>
+                <Text style={[styles.debugText, { color: debugInfo.iapServiceReceived.productIdPassesValidation ? '#22c55e' : '#ef4444' }]}>
+                  Passes Validation: {debugInfo.iapServiceReceived.productIdPassesValidation ? '✅ YES' : '❌ NO'}
+                </Text>
+                <Text style={styles.debugText}>
+                  Type: {debugInfo.iapServiceReceived.productIdType}
+                </Text>
+                <Text style={styles.debugText}>
+                  Length: {debugInfo.iapServiceReceived.productIdLength}
+                </Text>
+                <Text style={styles.debugText}>
+                  Is Null: {debugInfo.iapServiceReceived.productIdIsNull ? 'YES ⚠️' : 'NO'}
+                </Text>
+                <Text style={styles.debugText}>
+                  Is Undefined: {debugInfo.iapServiceReceived.productIdIsUndefined ? 'YES ⚠️' : 'NO'}
+                </Text>
+                <Text style={styles.debugText}>
+                  Trimmed Value: {debugInfo.iapServiceReceived.productIdTrimmed}
+                </Text>
+                <Text style={styles.debugText}>
+                  Plan: {debugInfo.iapServiceReceived.plan}
+                </Text>
+              </View>
+            )}
+
+            {debugInfo.validationFailure && (
+              <View style={styles.debugSection}>
+                <Text style={styles.debugSectionTitle}>❌ Validation Failure Details</Text>
+                <Text style={[styles.debugText, { color: '#ef4444' }]}>
+                  Product ID Falsy: {debugInfo.validationFailure.productIdFalsy ? 'YES ⚠️' : 'NO'}
+                </Text>
+                <Text style={[styles.debugText, { color: '#ef4444' }]}>
+                  Not String: {debugInfo.validationFailure.productIdNotString ? 'YES ⚠️' : 'NO'}
+                </Text>
+                <Text style={[styles.debugText, { color: '#ef4444' }]}>
+                  Empty After Trim: {debugInfo.validationFailure.productIdEmptyAfterTrim ? 'YES ⚠️' : 'NO'}
+                </Text>
+                <Text style={styles.debugText}>
+                  Raw Value: {String(debugInfo.validationFailure.productIdRawValue)}
+                </Text>
+                <Text style={styles.debugText}>
+                  Type: {debugInfo.validationFailure.productIdType}
                 </Text>
               </View>
             )}

@@ -454,6 +454,25 @@ class IAPService {
     console.log('[IAP]   sku:', productId);
     console.log('[IAP]   platform:', Platform.OS);
     console.log('[IAP]   selected plan:', plan);
+
+    // Send received parameters to debug callback FIRST
+    if (this.debugCallback) {
+      this.debugCallback({
+        listenerStatus: 'PURCHASE REQUEST RECEIVED',
+        iapServiceReceived: {
+          productId: productId,
+          productIdType: typeof productId,
+          productIdValue: String(productId),
+          productIdLength: productId?.length || 0,
+          productIdIsNull: productId === null,
+          productIdIsUndefined: productId === undefined,
+          productIdTrimmed: productId?.trim ? productId.trim() : 'N/A',
+          productIdPassesValidation: !!(productId && typeof productId === 'string' && productId.trim()),
+          plan: plan
+        }
+      });
+    }
+
     if (isExpoGo) {
       console.log('[IAP] Expo Go - simulating purchase');
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -474,6 +493,19 @@ class IAPService {
       }
 
       if (!productId || typeof productId !== 'string' || !productId.trim()) {
+        // Send detailed validation failure info to debug callback
+        if (this.debugCallback) {
+          this.debugCallback({
+            listenerStatus: 'VALIDATION FAILED ❌',
+            validationFailure: {
+              productIdFalsy: !productId,
+              productIdNotString: typeof productId !== 'string',
+              productIdEmptyAfterTrim: productId && typeof productId === 'string' && !productId.trim(),
+              productIdRawValue: productId,
+              productIdType: typeof productId
+            }
+          });
+        }
         throw new Error('Missing purchase request configuration: productId is invalid.');
       }
 
