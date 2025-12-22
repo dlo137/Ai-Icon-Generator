@@ -450,7 +450,10 @@ class IAPService {
   async purchaseProduct(productId: string, plan: SubscriptionPlan): Promise<void> {
     // Store the plan the user selected - this is our source of truth
     this.currentPurchaseAttempt = plan;
-    console.log('[IAP] Purchase attempt started for plan:', plan);
+    console.log('[IAP] 🛒 === PURCHASE REQUEST ===');
+    console.log('[IAP]   sku:', productId);
+    console.log('[IAP]   platform:', Platform.OS);
+    console.log('[IAP]   selected plan:', plan);
     if (isExpoGo) {
       console.log('[IAP] Expo Go - simulating purchase');
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -464,18 +467,32 @@ class IAPService {
     }
 
     try {
-      console.log('[IAP] Purchasing:', productId);
-
       if (this.debugCallback) {
         this.debugCallback({
           listenerStatus: 'PURCHASE INITIATED - WAITING... ⏳'
         });
       }
 
-      // ✅ UPDATED - react-native-iap v14+ API uses 'sku' string (not array)
-      // Purchases are handled by listeners (event-based, not promise-based)
-      // Type assertion needed due to incorrect type definitions in react-native-iap
-      await RNIap.requestPurchase({ sku: productId } as any);
+      if (!productId || typeof productId !== 'string' || !productId.trim()) {
+        throw new Error('Missing purchase request configuration: productId is invalid.');
+      }
+
+      // Explicit parameter logging
+      const purchaseParamsIOS = { sku: productId };
+      const purchaseParamsAndroid = { skus: [productId] };
+      console.log('[IAP] Purchase params object (iOS):', JSON.stringify(purchaseParamsIOS));
+      console.log('[IAP] Purchase params object (Android):', JSON.stringify(purchaseParamsAndroid));
+      console.log('[IAP] Purchase params keys (iOS):', Object.keys(purchaseParamsIOS));
+      console.log('[IAP] Purchase params keys (Android):', Object.keys(purchaseParamsAndroid));
+      console.log('[IAP] Purchase params.sku (iOS):', purchaseParamsIOS.sku);
+
+      // Platform-specific API usage
+      // Type assertions needed due to incorrect type definitions in react-native-iap
+      if (Platform.OS === 'ios') {
+        await RNIap.requestPurchase(purchaseParamsIOS as any);
+      } else {
+        await RNIap.requestPurchase(purchaseParamsAndroid as any);
+      }
 
       // Success/error will be handled by listeners
     } catch (error: any) {

@@ -237,16 +237,28 @@ export default function SubscriptionScreen() {
       console.error('[SubscriptionScreen] ❌ Product not found!');
       console.error('[SubscriptionScreen] Searched for:', planId);
       console.error('[SubscriptionScreen] In products:', list.map(p => ({ id: p.id, productId: p.productId })));
-      
+
+      // Update debug panel with error details
+      setDebugInfo((prev: any) => ({
+        ...prev,
+        lastError: {
+          message: 'Product not found',
+          searchedFor: planId,
+          availableProducts: list.map(p => p.productId || p.id),
+          selectedPlan,
+          timestamp: Date.now()
+        }
+      }));
+
       Alert.alert(
         'Plan not available',
         `We couldn't find the ${selectedPlan} plan (${planId}).
-        
+
 Available products: ${list.map(p => p.productId || p.id).join(', ') || 'None'}
 
 This usually means:
 • Product IDs don't match App Store Connect/Google Play Console
-• Products not approved for sale  
+• Products not approved for sale
 • Bundle ID mismatch
 • Wrong product type (subscription vs consumable)
 
@@ -255,9 +267,30 @@ Please check your internet connection and try again.`
       return;
     }
 
+    // Capture product details for debug panel
+    const productIdToUse = product.productId || product.id;
+    setDebugInfo((prev: any) => ({
+      ...prev,
+      purchaseAttempt: {
+        selectedPlan,
+        productObject: {
+          id: product.id,
+          productId: product.productId,
+          title: product.title,
+          price: product.price,
+          fullObject: JSON.stringify(product, null, 2)
+        },
+        productIdToUse,
+        productIdType: typeof productIdToUse,
+        productIdLength: productIdToUse?.length || 0,
+        productIdIsValid: !!(productIdToUse && typeof productIdToUse === 'string' && productIdToUse.trim()),
+        timestamp: Date.now()
+      }
+    }));
+
     // Set the current purchase attempt BEFORE starting the purchase
     setCurrentPurchaseAttempt(selectedPlan);
-    await handlePurchase(product.productId || product.id);
+    await handlePurchase(productIdToUse);
   };
 
   const handleContinueAsGuest = async () => {
@@ -535,11 +568,28 @@ Please check your internet connection and try again.`
       return;
     }
 
+    if (!productId || typeof productId !== 'string' || !productId.trim()) {
+      Alert.alert('Purchase error', 'Missing or invalid product ID. Please try again or contact support.');
+      setCurrentPurchaseAttempt(null);
+      return;
+    }
+
     try {
       await IAPService.purchaseProduct(productId, selectedPlan);
     } catch (e: any) {
       setCurrentPurchaseAttempt(null); // Clear on error
       const msg = String(e?.message || e);
+
+      // Save error and purchase params to debugInfo for debug panel
+      setDebugInfo((prev: any) => ({
+        ...prev,
+        lastError: {
+          message: msg,
+          productId,
+          selectedPlan,
+          timestamp: Date.now()
+        }
+      }));
 
       if (/already.*(owned|subscribed)/i.test(msg)) {
         Alert.alert(
@@ -885,19 +935,70 @@ Please check your internet connection and try again.`
               )}
             </View>
 
+            {debugInfo.purchaseAttempt && (
+              <View style={styles.debugSection}>
+                <Text style={styles.debugSectionTitle}>🛒 Purchase Attempt Details</Text>
+                <Text style={styles.debugText}>
+                  Selected Plan: {debugInfo.purchaseAttempt.selectedPlan}
+                </Text>
+                <Text style={styles.debugText}>
+                  Product ID to Use: {debugInfo.purchaseAttempt.productIdToUse || 'undefined'}
+                </Text>
+                <Text style={[styles.debugText, { color: debugInfo.purchaseAttempt.productIdIsValid ? '#22c55e' : '#ef4444' }]}>
+                  Is Valid: {debugInfo.purchaseAttempt.productIdIsValid ? '✅ YES' : '❌ NO'}
+                </Text>
+                <Text style={styles.debugText}>
+                  Type: {debugInfo.purchaseAttempt.productIdType}
+                </Text>
+                <Text style={styles.debugText}>
+                  Length: {debugInfo.purchaseAttempt.productIdLength}
+                </Text>
+                <Text style={styles.debugSectionTitle}>Product Object:</Text>
+                <Text style={styles.debugText}>
+                  id: {debugInfo.purchaseAttempt.productObject?.id || 'undefined'}
+                </Text>
+                <Text style={styles.debugText}>
+                  productId: {debugInfo.purchaseAttempt.productObject?.productId || 'undefined'}
+                </Text>
+                <Text style={styles.debugText}>
+                  title: {debugInfo.purchaseAttempt.productObject?.title || 'undefined'}
+                </Text>
+                <Text style={styles.debugText}>
+                  price: {debugInfo.purchaseAttempt.productObject?.price || 'undefined'}
+                </Text>
+                <Text style={styles.debugSectionTitle}>Full Product:</Text>
+                <Text style={[styles.debugText, styles.debugCode]}>
+                  {debugInfo.purchaseAttempt.productObject?.fullObject || 'No data'}
+                </Text>
+              </View>
+            )}
+
             {debugInfo.lastError && (
               <View style={styles.debugSection}>
-                <Text style={styles.debugSectionTitle}>⚠️ Last Error</Text>
+                <Text style={styles.debugSectionTitle}>⚠️ Last Purchase Error</Text>
                 <Text style={[styles.debugText, { color: '#ef4444' }]}>
                   Message: {debugInfo.lastError.message}
                 </Text>
-                {debugInfo.lastError.code && (
+                {debugInfo.lastError.productId && (
                   <Text style={styles.debugText}>
-                    Code: {debugInfo.lastError.code}
+                    Product ID: {debugInfo.lastError.productId}
                   </Text>
                 )}
+                {debugInfo.lastError.searchedFor && (
+                  <Text style={styles.debugText}>
+                    Searched For: {debugInfo.lastError.searchedFor}
+                  </Text>
+                )}
+                {debugInfo.lastError.availableProducts && (
+                  <Text style={styles.debugText}>
+                    Available: {debugInfo.lastError.availableProducts.join(', ') || 'None'}
+                  </Text>
+                )}
+                <Text style={styles.debugText}>
+                  Selected Plan: {debugInfo.lastError.selectedPlan}
+                </Text>
                 <Text style={styles.debugTextSmall}>
-                  Time: {new Date(debugInfo.lastError.timestamp).toLocaleTimeString()}
+                  Time: {debugInfo.lastError.timestamp ? new Date(debugInfo.lastError.timestamp).toLocaleTimeString() : ''}
                 </Text>
               </View>
             )}

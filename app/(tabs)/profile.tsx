@@ -224,7 +224,7 @@ export default function ProfileScreen() {
         await refreshCredits();
         await loadUserData();
         console.log('[PROFILE] Credits and user data refreshed successfully');
-        
+
         Alert.alert('Success!', 'Your credits have been added. Thank you for your purchase!');
       } catch (error) {
         console.error('[PROFILE] Error refreshing data after purchase:', error);
@@ -236,7 +236,7 @@ export default function ProfileScreen() {
       console.log('[PROFILE] Purchase cancelled or failed');
       setCurrentPurchaseAttempt(null);
     }
-  }, [refreshCredits, loadUserData]);
+  }, [refreshCredits]);
 
   const initializeIAP = async () => {
     if (!isIAPAvailable) {
@@ -596,14 +596,7 @@ export default function ProfileScreen() {
             const forceRedirect = () => {
               isDeletingRef.current = false;
               router.dismissAll();
-              if (router.reset) {
-                router.reset({
-                  index: 0,
-                  routes: [{ name: 'index' }],
-                });
-              } else {
-                router.replace('/');
-              }
+              router.replace('/');
               console.log('[DELETE] Force redirect executed');
             };
 
@@ -730,22 +723,15 @@ export default function ProfileScreen() {
                   );
                 }, 800);
               }
-            } catch (error) {
+            } catch (error: any) {
               // ALWAYS redirect no matter what error occurs
               console.error('[DELETE] Delete account error:', error);
-              
+
               // Force redirect even on error
               isDeletingRef.current = false;
               router.dismissAll();
-              if (router.reset) {
-                router.reset({
-                  index: 0,
-                  routes: [{ name: 'index' }],
-                });
-              } else {
-                router.replace('/');
-              }
-              
+              router.replace('/');
+
               Alert.alert('Error', `Failed to delete account: ${error?.message || 'Unknown error'}. You have been signed out.`);
             }
           }
