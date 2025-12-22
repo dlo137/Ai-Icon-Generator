@@ -525,6 +525,13 @@ class IAPService {
         throw new Error('Missing purchase request configuration: productId is invalid.');
       }
 
+      // Validation passed - send confirmation to debug
+      if (this.debugCallback) {
+        this.debugCallback({
+          listenerStatus: 'VALIDATION PASSED ✅ - Creating purchase params...'
+        });
+      }
+
       // Explicit parameter logging
       const purchaseParamsIOS = { sku: productId };
       const purchaseParamsAndroid = { skus: [productId] };
@@ -534,21 +541,49 @@ class IAPService {
       console.log('[IAP] Purchase params keys (Android):', Object.keys(purchaseParamsAndroid));
       console.log('[IAP] Purchase params.sku (iOS):', purchaseParamsIOS.sku);
 
+      // Send params to debug before calling requestPurchase
+      if (this.debugCallback) {
+        this.debugCallback({
+          listenerStatus: 'CALLING requestPurchase...',
+          requestPurchaseParams: {
+            platform: Platform.OS,
+            paramsIOS: purchaseParamsIOS,
+            paramsAndroid: purchaseParamsAndroid,
+            willUse: Platform.OS === 'ios' ? 'iOS params' : 'Android params'
+          }
+        });
+      }
+
       // Platform-specific API usage
       // Type assertions needed due to incorrect type definitions in react-native-iap
+      console.log('[IAP] About to call requestPurchase for platform:', Platform.OS);
       if (Platform.OS === 'ios') {
         await RNIap.requestPurchase(purchaseParamsIOS as any);
       } else {
         await RNIap.requestPurchase(purchaseParamsAndroid as any);
       }
+      console.log('[IAP] requestPurchase call completed (waiting for listener)');
 
       // Success/error will be handled by listeners
     } catch (error: any) {
       console.error('[IAP] Purchase failed:', error);
+      console.error('[IAP] Error details:', {
+        message: error?.message,
+        code: error?.code,
+        name: error?.name,
+        stack: error?.stack
+      });
 
       if (this.debugCallback) {
         this.debugCallback({
-          listenerStatus: 'PURCHASE FAILED ❌'
+          listenerStatus: 'PURCHASE FAILED ❌',
+          purchaseError: {
+            message: error?.message || String(error),
+            code: error?.code,
+            name: error?.name,
+            fullError: JSON.stringify(error, Object.getOwnPropertyNames(error)),
+            stack: error?.stack
+          }
         });
       }
 

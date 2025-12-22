@@ -25,6 +25,8 @@ const PRODUCT_IDS = Platform.OS === 'ios' ? {
 };
 
 export default function SubscriptionScreen() {
+  // Debounce flag to prevent duplicate purchase attempts
+  const purchaseInProgressRef = useRef(false);
   const router = useRouter();
   const routerRef = useRef(router);
   const { refreshCredits } = useCredits();
@@ -204,14 +206,21 @@ export default function SubscriptionScreen() {
   };
 
   const handleContinue = async () => {
+    if (purchaseInProgressRef.current) {
+      console.log('[SubscriptionScreen] Purchase already in progress, ignoring duplicate tap');
+      return;
+    }
+    purchaseInProgressRef.current = true;
     // If running in Expo Go, simulate the purchase
     if (isExpoGo) {
       await simulatePurchaseInExpoGo();
+      purchaseInProgressRef.current = false;
       return;
     }
 
     if (!isIAPAvailable) {
       Alert.alert('Purchases unavailable', 'In-app purchases are not available on this device.');
+      purchaseInProgressRef.current = false;
       return;
     }
 
@@ -240,29 +249,7 @@ export default function SubscriptionScreen() {
 
       // Update debug panel with error details
       setDebugInfo((prev: any) => ({
-        ...prev,
-        lastError: {
-          message: 'Product not found',
-          searchedFor: planId,
-          availableProducts: list.map(p => p.productId || p.id),
-          selectedPlan,
-          timestamp: Date.now()
-        }
-      }));
 
-      Alert.alert(
-        'Plan not available',
-        `We couldn't find the ${selectedPlan} plan (${planId}).
-
-Available products: ${list.map(p => p.productId || p.id).join(', ') || 'None'}
-
-This usually means:
-• Product IDs don't match App Store Connect/Google Play Console
-• Products not approved for sale
-• Bundle ID mismatch
-• Wrong product type (subscription vs consumable)
-
-Please check your internet connection and try again.`
       );
       return;
     }
@@ -270,10 +257,29 @@ Please check your internet connection and try again.`
     // Capture product details for debug panel
     const productIdToUse = product.productId || product.id;
     setDebugInfo((prev: any) => ({
-      ...prev,
-      purchaseAttempt: {
-        selectedPlan,
+        if (!product) {
+          console.error('[SubscriptionScreen] ❌ Product not found!');
+          console.error('[SubscriptionScreen] Searched for:', planId);
+          console.error('[SubscriptionScreen] In products:', list.map(p => ({ id: p.id, productId: p.productId })));
+
+          // Update debug panel with error details
+          setDebugInfo((prev: any) => ({
+            ...prev,
+            lastError: {
+              message: 'Product not found',
+              searchedFor: planId,
+              availableProducts: list.map(p => p.productId || p.id),
+              selectedPlan,
+              timestamp: Date.now()
+            }
+          }));
+
+          Alert.alert(
+            'Plan not available',
+            `We couldn't find the ${selectedPlan} plan (${planId}).
+
         productObject: {
+
           id: product.id,
           productId: product.productId,
           title: product.title,
@@ -281,6 +287,10 @@ Please check your internet connection and try again.`
           fullObject: JSON.stringify(product, null, 2)
         },
         productIdToUse,
+          );
+          purchaseInProgressRef.current = false;
+          return;
+        }
         productIdType: typeof productIdToUse,
         productIdLength: productIdToUse?.length || 0,
         productIdIsValid: !!(productIdToUse && typeof productIdToUse === 'string' && productIdToUse.trim()),
@@ -291,6 +301,7 @@ Please check your internet connection and try again.`
     // Set the current purchase attempt BEFORE starting the purchase
     setCurrentPurchaseAttempt(selectedPlan);
     await handlePurchase(productIdToUse);
+    purchaseInProgressRef.current = false;
   };
 
   const handleContinueAsGuest = async () => {
@@ -579,6 +590,7 @@ Please check your internet connection and try again.`
     if (!isIAPAvailable) {
       Alert.alert('Purchases unavailable', 'In-app purchases are not available on this device.');
       setCurrentPurchaseAttempt(null);
+      if (purchaseInProgressRef) purchaseInProgressRef.current = false;
       return;
     }
 
@@ -598,6 +610,7 @@ Please check your internet connection and try again.`
       }));
       Alert.alert('Purchase error', 'Missing or invalid product ID. Please try again or contact support.');
       setCurrentPurchaseAttempt(null);
+      if (purchaseInProgressRef) purchaseInProgressRef.current = false;
       return;
     }
 
@@ -606,44 +619,45 @@ Please check your internet connection and try again.`
         ...prev,
         callingIAPService: {
           productId,
-          selectedPlan,
-          timestamp: Date.now()
-        }
-      }));
+          try {
+            setDebugInfo((prev: any) => ({
+              ...prev,
+              callingIAPService: {
+                productId,
+                selectedPlan,
+                timestamp: Date.now()
+              }
+            }));
 
-      await IAPService.purchaseProduct(productId, selectedPlan);
-    } catch (e: any) {
-      setCurrentPurchaseAttempt(null); // Clear on error
-      const msg = String(e?.message || e);
+            await IAPService.purchaseProduct(productId, selectedPlan);
+          } catch (e: any) {
+            setCurrentPurchaseAttempt(null); // Clear on error
+            if (purchaseInProgressRef) purchaseInProgressRef.current = false;
+            const msg = String(e?.message || e);
 
-      // Save error and purchase params to debugInfo for debug panel
-      setDebugInfo((prev: any) => ({
-        ...prev,
-        lastError: {
-          message: msg,
-          productId,
-          selectedPlan,
-          timestamp: Date.now()
-        }
-      }));
+            // Save error and purchase params to debugInfo for debug panel
+            setDebugInfo((prev: any) => ({
+              ...prev,
+              lastError: {
+                message: msg,
+                productId,
+                selectedPlan,
+                timestamp: Date.now()
+              }
+            }));
 
-      if (/already.*(owned|subscribed)/i.test(msg)) {
-        Alert.alert(
-          'Already subscribed',
-          'You already have an active subscription. Manage your subscriptions from the App Store.',
-          [
-            { text: 'OK' },
-          ]
-        );
-        return;
-      }
+            if (/already.*(owned|subscribed)/i.test(msg)) {/* ...existing code... */}
 
-      if (/item.*unavailable|product.*not.*available/i.test(msg)) {
-        Alert.alert('Not available', 'This plan isn\'t available for purchase right now.');
-        return;
-      }
+            if (/item.*unavailable|product.*not.*available/i.test(msg)) {/* ...existing code... */}
 
-      // Handle user cancellation
+            // Handle user cancellation
+            if (/user.*(cancel|abort)/i.test(msg) || /cancel/i.test(msg)) {/* ...existing code... */}
+
+            // Handle timeout
+            if (/timeout/i.test(msg)) {/* ...existing code... */}
+
+            Alert.alert('Purchase error', msg);
+          }
       if (/user.*(cancel|abort)/i.test(msg) || /cancel/i.test(msg)) {
         return;
       }
@@ -1108,6 +1122,53 @@ Please check your internet connection and try again.`
                 <Text style={styles.debugText}>
                   Plan: {debugInfo.iapServiceReceived.plan}
                 </Text>
+              </View>
+            )}
+
+            {debugInfo.requestPurchaseParams && (
+              <View style={styles.debugSection}>
+                <Text style={styles.debugSectionTitle}>🚀 Calling requestPurchase</Text>
+                <Text style={styles.debugText}>
+                  Platform: {debugInfo.requestPurchaseParams.platform}
+                </Text>
+                <Text style={styles.debugText}>
+                  Will Use: {debugInfo.requestPurchaseParams.willUse}
+                </Text>
+                <Text style={styles.debugSectionTitle}>iOS Params:</Text>
+                <Text style={[styles.debugText, styles.debugCode]}>
+                  {JSON.stringify(debugInfo.requestPurchaseParams.paramsIOS, null, 2)}
+                </Text>
+                <Text style={styles.debugSectionTitle}>Android Params:</Text>
+                <Text style={[styles.debugText, styles.debugCode]}>
+                  {JSON.stringify(debugInfo.requestPurchaseParams.paramsAndroid, null, 2)}
+                </Text>
+              </View>
+            )}
+
+            {debugInfo.purchaseError && (
+              <View style={styles.debugSection}>
+                <Text style={styles.debugSectionTitle}>💥 Purchase Error Details</Text>
+                <Text style={[styles.debugText, { color: '#ef4444', fontWeight: 'bold' }]}>
+                  Message: {debugInfo.purchaseError.message}
+                </Text>
+                <Text style={styles.debugText}>
+                  Code: {debugInfo.purchaseError.code || 'None'}
+                </Text>
+                <Text style={styles.debugText}>
+                  Name: {debugInfo.purchaseError.name || 'None'}
+                </Text>
+                <Text style={styles.debugSectionTitle}>Full Error:</Text>
+                <Text style={[styles.debugText, styles.debugCode]}>
+                  {debugInfo.purchaseError.fullError || 'No details'}
+                </Text>
+                {debugInfo.purchaseError.stack && (
+                  <>
+                    <Text style={styles.debugSectionTitle}>Stack Trace:</Text>
+                    <Text style={[styles.debugTextSmall, styles.debugCode]}>
+                      {debugInfo.purchaseError.stack}
+                    </Text>
+                  </>
+                )}
               </View>
             )}
 
