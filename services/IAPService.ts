@@ -444,7 +444,7 @@ class IAPService {
 
   /**
    * Purchase a consumable product
-   * @param productId - Product SKU (e.g., 'starter.15', 'value.45', 'pro.120')
+  * @param productId - Product SKU (e.g., 'starter.25', 'value.75', 'pro.200')
    * @param plan - The plan the user selected (starter/value/pro)
    */
   async purchaseProduct(productId: string, plan: SubscriptionPlan): Promise<void> {

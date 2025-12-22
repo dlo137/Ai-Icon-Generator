@@ -69,13 +69,13 @@ export default function ProfileScreen() {
 
   // Platform-specific product IDs - must match App Store Connect / Google Play Console
   const PRODUCT_IDS = Platform.OS === 'ios' ? {
-    starter: 'starter.15',
-    value: 'value.45',
-    pro: 'pro.120',
+    starter: 'starter.25',
+    value: 'value.75',
+    pro: 'pro.200',
   } : {
-    starter: 'starter.15',
-    value: 'value.45',
-    pro: 'pro.120',
+    starter: 'starter.25',
+    value: 'value.75',
+    pro: 'pro.200',
   };
 
   // Helper function to format price - always use fallback to show consistent format
@@ -169,13 +169,13 @@ export default function ProfileScreen() {
     let price = '';
     let planName = currentPlan;
 
-    if (subscriptionInfo.productId === 'pro.120') {
+    if (subscriptionInfo.productId === 'pro.200') {
       price = '$14.99';
       planName = 'Pro';
-    } else if (subscriptionInfo.productId === 'value.45') {
+    } else if (subscriptionInfo.productId === 'value.75') {
       price = '$5.99';
       planName = 'Value';
-    } else if (subscriptionInfo.productId === 'starter.15') {
+    } else if (subscriptionInfo.productId === 'starter.25') {
       price = '$1.99';
       planName = 'Starter';
     }
@@ -300,7 +300,7 @@ export default function ProfileScreen() {
       } else {
         setProducts([]);
         console.warn('[PROFILE] ⚠️ No products returned from App Store!');
-        console.warn('[PROFILE] Expected product IDs:', ['starter.15', 'value.45', 'pro.120']);
+        console.warn('[PROFILE] Expected product IDs:', ['starter.25', 'value.75', 'pro.200']);
         console.warn('[PROFILE] Make sure products are created in App Store Connect and approved for testing');
 
         if (showErrors) {
@@ -309,9 +309,9 @@ export default function ProfileScreen() {
             'Could not load any credit packs.\n\n' +
             'Next Steps:\n' +
             '1. Create consumable IAP products in App Store Connect:\n' +
-            '   • starter.15 ($1.99 - 15 AI Icons)\n' +
-            '   • value.45 ($5.99 - 45 AI Icons)\n' +
-            '   • pro.120 ($14.99 - 120 AI Icons)\n\n' +
+            '   • starter.25 ($1.99 - 15 AI Icons)\n' +
+            '   • value.75 ($5.99 - 45 AI Icons)\n' +
+            '   • pro.200 ($14.99 - 120 AI Icons)\n\n' +
             '2. Submit your app for review\n\n' +
             '3. Products will appear after approval\n\n' +
             'For testing: Use Expo Go to simulate purchases without App Store setup.',
@@ -478,13 +478,13 @@ export default function ProfileScreen() {
         let planName = '';
         let price = '';
 
-        if (subInfo.productId === 'pro.120') {
+        if (subInfo.productId === 'pro.200') {
           planName = 'Pro';
           price = '$14.99';
-        } else if (subInfo.productId === 'value.45') {
+        } else if (subInfo.productId === 'value.75') {
           planName = 'Value';
           price = '$5.99';
-        } else if (subInfo.productId === 'starter.15') {
+        } else if (subInfo.productId === 'starter.25') {
           planName = 'Starter';
           price = '$1.99';
         } else {
@@ -901,7 +901,7 @@ export default function ProfileScreen() {
         'In-app purchases are not available.\n\n' +
         'To make purchases:\n' +
         '• Test in Expo Go for simulated purchases, OR\n' +
-        '• Set up consumable products in App Store Connect (starter.15, value.45, pro.120)'
+        '• Set up consumable products in App Store Connect (starter.25, value.75, pro.200)'
       );
       return;
     }
@@ -930,7 +930,7 @@ export default function ProfileScreen() {
         'In-app purchases are not available.\n\n' +
         'To make purchases:\n' +
         '• Test in Expo Go for simulated purchases, OR\n' +
-        '• Set up consumable products in App Store Connect (starter.15, value.45, pro.120)'
+        '• Set up consumable products in App Store Connect (starter.25, value.75, pro.200)'
       );
       setCurrentPurchaseAttempt(null);
       return;

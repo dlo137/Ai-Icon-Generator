@@ -53,13 +53,13 @@ serve(async (req) => {
     let creditsToAdd = 0
 
     // Map consumable product IDs to credits
-    if (productId.includes('starter.15')) {
+    if (productId.includes('starter.25')) {
       plan = 'starter'
       creditsToAdd = 15
-    } else if (productId.includes('value.45')) {
+    } else if (productId.includes('value.75')) {
       plan = 'value'
       creditsToAdd = 45
-    } else if (productId.includes('pro.120')) {
+    } else if (productId.includes('pro.200')) {
       plan = 'pro'
       creditsToAdd = 120
     } else {
