@@ -249,54 +249,48 @@ export default function SubscriptionScreen() {
 
       // Update debug panel with error details
       setDebugInfo((prev: any) => ({
-
-      );
+        ...prev,
+        lastError: {
+          message: 'Product not found',
+          searchedFor: planId,
+          availableProducts: list.map(p => p.productId || p.id),
+          selectedPlan,
+          timestamp: Date.now()
+        }
+      }));
       return;
     }
 
     // Capture product details for debug panel
     const productIdToUse = product.productId || product.id;
     setDebugInfo((prev: any) => ({
-        if (!product) {
-          console.error('[SubscriptionScreen] ❌ Product not found!');
-          console.error('[SubscriptionScreen] Searched for:', planId);
-          console.error('[SubscriptionScreen] In products:', list.map(p => ({ id: p.id, productId: p.productId })));
-
-          // Update debug panel with error details
-          setDebugInfo((prev: any) => ({
-            ...prev,
-            lastError: {
-              message: 'Product not found',
-              searchedFor: planId,
-              availableProducts: list.map(p => p.productId || p.id),
-              selectedPlan,
-              timestamp: Date.now()
-            }
-          }));
-
-          Alert.alert(
-            'Plan not available',
-            `We couldn't find the ${selectedPlan} plan (${planId}).
-
+      ...prev,
+      purchaseAttempt: {
+        selectedPlan,
+        productIdToUse,
+        productIdType: typeof productIdToUse,
+        productIdLength: productIdToUse?.length || 0,
+        productIdIsValid: !!(productIdToUse && typeof productIdToUse === 'string' && productIdToUse.trim()),
         productObject: {
-
           id: product.id,
           productId: product.productId,
           title: product.title,
           price: product.price,
           fullObject: JSON.stringify(product, null, 2)
         },
-        productIdToUse,
-          );
-          purchaseInProgressRef.current = false;
-          return;
-        }
-        productIdType: typeof productIdToUse,
-        productIdLength: productIdToUse?.length || 0,
-        productIdIsValid: !!(productIdToUse && typeof productIdToUse === 'string' && productIdToUse.trim()),
         timestamp: Date.now()
       }
     }));
+
+    // Validate product ID before purchase
+    if (!productIdToUse || typeof productIdToUse !== 'string' || !productIdToUse.trim()) {
+      Alert.alert(
+        'Plan not available',
+        `We couldn't find the ${selectedPlan} plan (${planId}). Please try again or contact support.`
+      );
+      purchaseInProgressRef.current = false;
+      return;
+    }
 
     // Set the current purchase attempt BEFORE starting the purchase
     setCurrentPurchaseAttempt(selectedPlan);
@@ -619,45 +613,39 @@ export default function SubscriptionScreen() {
         ...prev,
         callingIAPService: {
           productId,
-          try {
-            setDebugInfo((prev: any) => ({
-              ...prev,
-              callingIAPService: {
-                productId,
-                selectedPlan,
-                timestamp: Date.now()
-              }
-            }));
+          selectedPlan,
+          timestamp: Date.now()
+        }
+      }));
 
-            await IAPService.purchaseProduct(productId, selectedPlan);
-          } catch (e: any) {
-            setCurrentPurchaseAttempt(null); // Clear on error
-            if (purchaseInProgressRef) purchaseInProgressRef.current = false;
-            const msg = String(e?.message || e);
+      await IAPService.purchaseProduct(productId, selectedPlan);
+    } catch (e: any) {
+      setCurrentPurchaseAttempt(null); // Clear on error
+      if (purchaseInProgressRef) purchaseInProgressRef.current = false;
+      const msg = String(e?.message || e);
 
-            // Save error and purchase params to debugInfo for debug panel
-            setDebugInfo((prev: any) => ({
-              ...prev,
-              lastError: {
-                message: msg,
-                productId,
-                selectedPlan,
-                timestamp: Date.now()
-              }
-            }));
+      // Save error and purchase params to debugInfo for debug panel
+      setDebugInfo((prev: any) => ({
+        ...prev,
+        lastError: {
+          message: msg,
+          productId,
+          selectedPlan,
+          timestamp: Date.now()
+        }
+      }));
 
-            if (/already.*(owned|subscribed)/i.test(msg)) {/* ...existing code... */}
+      // Handle already owned
+      if (/already.*(owned|subscribed)/i.test(msg)) {
+        return;
+      }
 
-            if (/item.*unavailable|product.*not.*available/i.test(msg)) {/* ...existing code... */}
+      // Handle product unavailable
+      if (/item.*unavailable|product.*not.*available/i.test(msg)) {
+        return;
+      }
 
-            // Handle user cancellation
-            if (/user.*(cancel|abort)/i.test(msg) || /cancel/i.test(msg)) {/* ...existing code... */}
-
-            // Handle timeout
-            if (/timeout/i.test(msg)) {/* ...existing code... */}
-
-            Alert.alert('Purchase error', msg);
-          }
+      // Handle user cancellation
       if (/user.*(cancel|abort)/i.test(msg) || /cancel/i.test(msg)) {
         return;
       }
