@@ -15,13 +15,13 @@ import { useCredits } from '../src/contexts/CreditsContext';
 // Platform-specific product IDs - must match App Store Connect / Google Play Console
 // Consumable IAP product IDs
 const PRODUCT_IDS = Platform.OS === 'ios' ? {
-  starter: 'starter.15',
-  value: 'value.45',
-  pro: 'pro.120',
+  starter: 'starter.25',
+  value: 'value.75',
+  pro: 'pro.200',
 } : {
-  starter: 'starter.15',
-  value: 'value.45',
-  pro: 'pro.120',
+  starter: 'starter.25',
+  value: 'value.75',
+  pro: 'pro.200',
 };
 
 export default function SubscriptionScreen() {
