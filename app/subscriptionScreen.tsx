@@ -562,6 +562,20 @@ Please check your internet connection and try again.`
   };
 
   const handlePurchase = async (productId: string) => {
+    // Track call count for debugging
+    const callTimestamp = Date.now();
+    setDebugInfo((prev: any) => ({
+      ...prev,
+      handlePurchaseCalls: (prev.handlePurchaseCalls || 0) + 1,
+      lastHandlePurchaseCall: {
+        productId,
+        selectedPlan,
+        timestamp: callTimestamp,
+        productIdType: typeof productId,
+        productIdValid: !!(productId && typeof productId === 'string' && productId.trim())
+      }
+    }));
+
     if (!isIAPAvailable) {
       Alert.alert('Purchases unavailable', 'In-app purchases are not available on this device.');
       setCurrentPurchaseAttempt(null);
@@ -569,12 +583,34 @@ Please check your internet connection and try again.`
     }
 
     if (!productId || typeof productId !== 'string' || !productId.trim()) {
+      setDebugInfo((prev: any) => ({
+        ...prev,
+        lastError: {
+          message: 'handlePurchase validation failed',
+          productId,
+          productIdType: typeof productId,
+          productIdFalsy: !productId,
+          productIdNotString: typeof productId !== 'string',
+          productIdEmptyTrim: productId && typeof productId === 'string' && !productId.trim(),
+          selectedPlan,
+          timestamp: Date.now()
+        }
+      }));
       Alert.alert('Purchase error', 'Missing or invalid product ID. Please try again or contact support.');
       setCurrentPurchaseAttempt(null);
       return;
     }
 
     try {
+      setDebugInfo((prev: any) => ({
+        ...prev,
+        callingIAPService: {
+          productId,
+          selectedPlan,
+          timestamp: Date.now()
+        }
+      }));
+
       await IAPService.purchaseProduct(productId, selectedPlan);
     } catch (e: any) {
       setCurrentPurchaseAttempt(null); // Clear on error
@@ -844,6 +880,11 @@ Please check your internet connection and try again.`
                 <View style={[styles.statusIndicator, currentPurchaseAttempt ? styles.statusActive : styles.statusInactive]} />
                 <Text style={styles.debugText}>{debugInfo.listenerStatus || 'Idle'}</Text>
               </View>
+              {debugInfo.handlePurchaseCalls && (
+                <Text style={[styles.debugText, { color: debugInfo.handlePurchaseCalls > 1 ? '#fbbf24' : '#22c55e', marginTop: 8 }]}>
+                  handlePurchase Calls: {debugInfo.handlePurchaseCalls} {debugInfo.handlePurchaseCalls > 1 ? '⚠️ MULTIPLE CALLS!' : ''}
+                </Text>
+              )}
             </View>
 
             <View style={styles.debugSection}>
@@ -969,6 +1010,73 @@ Please check your internet connection and try again.`
                 <Text style={styles.debugSectionTitle}>Full Product:</Text>
                 <Text style={[styles.debugText, styles.debugCode]}>
                   {debugInfo.purchaseAttempt.productObject?.fullObject || 'No data'}
+                </Text>
+              </View>
+            )}
+
+            {debugInfo.lastHandlePurchaseCall && (
+              <View style={styles.debugSection}>
+                <Text style={styles.debugSectionTitle}>📞 Last handlePurchase Call</Text>
+                <Text style={styles.debugText}>
+                  Product ID: {debugInfo.lastHandlePurchaseCall.productId || 'undefined'}
+                </Text>
+                <Text style={[styles.debugText, { color: debugInfo.lastHandlePurchaseCall.productIdValid ? '#22c55e' : '#ef4444' }]}>
+                  Is Valid: {debugInfo.lastHandlePurchaseCall.productIdValid ? '✅ YES' : '❌ NO'}
+                </Text>
+                <Text style={styles.debugText}>
+                  Type: {debugInfo.lastHandlePurchaseCall.productIdType}
+                </Text>
+                <Text style={styles.debugText}>
+                  Selected Plan: {debugInfo.lastHandlePurchaseCall.selectedPlan}
+                </Text>
+                <Text style={styles.debugTextSmall}>
+                  Time: {new Date(debugInfo.lastHandlePurchaseCall.timestamp).toLocaleTimeString()}
+                </Text>
+              </View>
+            )}
+
+            {debugInfo.callingIAPService && (
+              <View style={styles.debugSection}>
+                <Text style={styles.debugSectionTitle}>📤 Calling IAP Service</Text>
+                <Text style={styles.debugText}>
+                  Product ID: {debugInfo.callingIAPService.productId || 'undefined'}
+                </Text>
+                <Text style={styles.debugText}>
+                  Selected Plan: {debugInfo.callingIAPService.selectedPlan}
+                </Text>
+                <Text style={styles.debugTextSmall}>
+                  Time: {new Date(debugInfo.callingIAPService.timestamp).toLocaleTimeString()}
+                </Text>
+              </View>
+            )}
+
+            {debugInfo.purchaseProductParams && (
+              <View style={styles.debugSection}>
+                <Text style={styles.debugSectionTitle}>🎯 purchaseProduct Params</Text>
+                <Text style={styles.debugText}>
+                  Product ID: {debugInfo.purchaseProductParams.productId || 'undefined'}
+                </Text>
+                <Text style={styles.debugText}>
+                  Type: {debugInfo.purchaseProductParams.productIdType}
+                </Text>
+                <Text style={styles.debugText}>
+                  Length: {debugInfo.purchaseProductParams.productIdLength}
+                </Text>
+                <Text style={styles.debugText}>
+                  Is Null: {debugInfo.purchaseProductParams.productIdIsNull ? 'YES ⚠️' : 'NO'}
+                </Text>
+                <Text style={styles.debugText}>
+                  Is Undefined: {debugInfo.purchaseProductParams.productIdIsUndefined ? 'YES ⚠️' : 'NO'}
+                </Text>
+                <Text style={styles.debugText}>
+                  Trimmed: {debugInfo.purchaseProductParams.productIdTrimmed}
+                </Text>
+                <Text style={styles.debugText}>
+                  Plan: {debugInfo.purchaseProductParams.plan}
+                </Text>
+                <Text style={styles.debugSectionTitle}>Stack Trace:</Text>
+                <Text style={[styles.debugTextSmall, styles.debugCode]}>
+                  {debugInfo.purchaseProductParams.stack || 'No stack'}
                 </Text>
               </View>
             )}

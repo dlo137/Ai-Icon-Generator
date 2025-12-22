@@ -448,6 +448,22 @@ class IAPService {
    * @param plan - The plan the user selected (starter/value/pro)
    */
   async purchaseProduct(productId: string, plan: SubscriptionPlan): Promise<void> {
+    // Granular debug logging at the very start
+    if (this.debugCallback) {
+      this.debugCallback({
+        listenerStatus: 'PURCHASE_PRODUCT CALLED',
+        purchaseProductParams: {
+          productId,
+          plan,
+          productIdType: typeof productId,
+          productIdIsNull: productId === null,
+          productIdIsUndefined: productId === undefined,
+          productIdTrimmed: productId?.trim ? productId.trim() : 'N/A',
+          productIdLength: productId?.length || 0,
+          stack: (new Error().stack || '').split('\n').slice(0, 5).join('\n')
+        }
+      });
+    }
     // Store the plan the user selected - this is our source of truth
     this.currentPurchaseAttempt = plan;
     console.log('[IAP] 🛒 === PURCHASE REQUEST ===');
