@@ -1,24 +1,22 @@
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated, Alert, Image, Platform } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useIAP } from '../hooks/useIAP';
-import { completeOnboarding } from '../src/features/auth/api';
 import Constants from 'expo-constants';
 import { supabase } from '../lib/supabase';
-import { isGuestSession } from '../src/utils/guestSession';
-import { saveGuestPurchase } from '../src/utils/guestPurchaseStorage';
-import { initializeGuestCredits } from '../src/utils/guestCredits';
-import { useCredits } from '../src/contexts/CreditsContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useConsumableIAP } from '../hooks/useConsumableIAP';
 
-// Platform-specific product IDs - must match App Store Connect / Google Play Console
-// Consumable IAP product IDs
-const PRODUCT_IDS = Platform.OS === 'ios' ? {
-  starter: 'starter.25',
-  value: 'value.75',
-  pro: 'pro.200',
-} : {
+// Consumable IAP credit packs - must match App Store Connect / Google Play Console
+const CREDIT_PACKS = [
+  { productId: 'starter.25', credits: 15, displayName: 'Starter Pack' },
+  { productId: 'value.75', credits: 45, displayName: 'Value Pack' },
+  { productId: 'pro.200', credits: 120, displayName: 'Pro Pack' },
+];
+
+// Quick lookup for product IDs by plan name
+const PRODUCT_IDS = {
   starter: 'starter.25',
   value: 'value.75',
   pro: 'pro.200',
@@ -29,22 +27,13 @@ export default function SubscriptionScreen() {
   const purchaseInProgressRef = useRef(false);
   const router = useRouter();
   const routerRef = useRef(router);
-  const { refreshCredits } = useCredits();
   const [selectedPlan, setSelectedPlan] = useState<'starter' | 'value' | 'pro'>('pro');
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const productIdList = [PRODUCT_IDS.starter, PRODUCT_IDS.value, PRODUCT_IDS.pro];
-  const {
-    products,
-    status: iapStatus,
-    error: iapError,
-    purchaseResult,
-    purchase: purchaseIAP
-  } = useIAP(productIdList);
-
-  // Check if IAP is available based on status
-  const isIAPAvailable = iapStatus === 'ready' || iapStatus === 'success' || products.length > 0;
-  const [currentPurchaseAttempt, setCurrentPurchaseAttempt] = useState<'starter' | 'value' | 'pro' | null>(null);
-  const hasProcessedOrphansRef = useRef<boolean>(false);
+  
+  // Initialize consumable IAP service
+  const { products, isLoading, purchasingProduct, error: iapError, purchase } = useConsumableIAP(CREDIT_PACKS);
+  const iapStatus = isLoading ? 'loading' : (products.length > 0 ? 'ready' : 'error');
+  const currentPurchaseAttempt = purchasingProduct as 'starter' | 'value' | 'pro' | null;
 
   // Keep router ref updated
   useEffect(() => {
@@ -64,29 +53,6 @@ export default function SubscriptionScreen() {
   // Check if running in Expo Go
   const isExpoGo = Constants.executionEnvironment === 'storeClient';
 
-  // Handle successful purchase from useIAP hook
-  useEffect(() => {
-    if (purchaseResult?.success) {
-      // Mark onboarding as complete
-      completeOnboarding().catch(err => {
-        console.error('Failed to complete onboarding:', err);
-      });
-
-      // Refresh the credits counter in header
-      refreshCredits().catch(err => {
-        console.error('Failed to refresh credits:', err);
-      });
-
-      // Navigate immediately without delay
-      setCurrentPurchaseAttempt(null);
-      router.replace('/(tabs)/generate');
-    } else if (purchaseResult?.error) {
-      // Handle purchase error
-      setCurrentPurchaseAttempt(null);
-      console.error('Purchase error:', purchaseResult.error);
-    }
-  }, [purchaseResult, router, refreshCredits]);
-
   useEffect(() => {
     Animated.timing(fadeAnim, {
       toValue: 1,
@@ -101,6 +67,7 @@ export default function SubscriptionScreen() {
       return;
     }
     purchaseInProgressRef.current = true;
+
     // If running in Expo Go, simulate the purchase
     if (isExpoGo) {
       await simulatePurchaseInExpoGo();
@@ -108,6 +75,7 @@ export default function SubscriptionScreen() {
       return;
     }
 
+    const isIAPAvailable = iapStatus === 'ready' && products.length > 0;
     if (!isIAPAvailable) {
       Alert.alert('Purchases unavailable', 'In-app purchases are not available on this device.');
       purchaseInProgressRef.current = false;
@@ -125,169 +93,63 @@ export default function SubscriptionScreen() {
       purchaseInProgressRef.current = false;
       return;
     }
-    setCurrentPurchaseAttempt(selectedPlan);
-    await purchaseIAP(planId);
-    purchaseInProgressRef.current = false;
+
+    try {
+      const result = await purchase(planId);
+      
+      if (result.success) {
+        // Mark onboarding as complete
+        await AsyncStorage.setItem('hasCompletedOnboarding', 'true');
+        
+        // Navigate to generate screen
+        router.replace('/(tabs)/generate');
+      } else if (result.error && !result.error.includes('cancelled')) {
+        Alert.alert('Purchase Failed', result.error || 'Please try again.');
+      }
+    } catch (error: any) {
+      console.error('Purchase failed:', error);
+      if (error.message && !error.message.includes('cancelled')) {
+        Alert.alert('Purchase Failed', error.message || 'Please try again.');
+      }
+    } finally {
+      purchaseInProgressRef.current = false;
+    }
   };
 
   const handleContinueAsGuest = async () => {
     try {
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
 
-      // Check if already a guest
-      const isGuest = await isGuestSession();
-      const { getGuestSession } = require('../src/utils/guestSession');
-      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      if (user) {
+        // Update Supabase profile with 3 free credits
+        const { error: updateError } = await supabase
+          .from('profiles')
+          .update({
+            credits_current: 3,
+            credits_max: 3,
+            is_pro_version: false,
+          })
+          .eq('id', user.id);
 
-      if (isGuest) {
-        // Guest already has a session, just give them 3 credits
-        const guestSession = await getGuestSession();
-        const { initializeGuestCredits } = require('../src/utils/guestCredits');
-
-        // Set 3 free credits using proper credit initialization
-        // Create a temporary 'free' plan with 3 credits
-        await AsyncStorage.setItem('guest_credits', JSON.stringify({
-          current: 3,
-          max: 3,
-          lastResetDate: new Date().toISOString(),
-          plan: 'free'
-        }));
-
-        // Also update Supabase profile if guest has Supabase user ID
-        if (guestSession?.supabaseUserId) {
-
-          // First, get the existing profile to preserve the name
-          const { data: existingProfile } = await supabase
-            .from('profiles')
-            .select('name')
-            .eq('id', guestSession.supabaseUserId)
-            .single();
-
-          const { error: updateError } = await supabase
-            .from('profiles')
-            .update({
-              credits_current: 3,
-              credits_max: 3,
-              is_pro_version: false,
-              // Preserve the guest name if it exists
-              ...(existingProfile?.name && { name: existingProfile.name })
-            })
-            .eq('id', guestSession.supabaseUserId);
-
-          if (updateError) {
-          } else {
-          }
-        }
-      } else {
-        // Should not happen since they came from signup as guest
-        // But handle it anyway - create guest session
-        const { createGuestSession } = require('../src/utils/guestSession');
-        const newSession = await createGuestSession();
-
-        // Set 3 free credits in local storage
-        await AsyncStorage.setItem('guest_credits', JSON.stringify({
-          current: 3,
-          max: 3,
-          lastResetDate: new Date().toISOString(),
-          plan: 'free'
-        }));
-
-        // Update Supabase profile with 3 credits
-        if (newSession.supabaseUserId) {
-
-          // First, get the existing profile to preserve the name
-          const { data: existingProfile } = await supabase
-            .from('profiles')
-            .select('name')
-            .eq('id', newSession.supabaseUserId)
-            .single();
-
-          const { error: updateError } = await supabase
-            .from('profiles')
-            .update({
-              credits_current: 3,
-              credits_max: 3,
-              is_pro_version: false,
-              // Preserve the guest name if it exists
-              ...(existingProfile?.name && { name: existingProfile.name })
-            })
-            .eq('id', newSession.supabaseUserId);
-
-          if (updateError) {
-          } else {
-          }
+        if (updateError) {
+          console.error('Failed to update profile:', updateError);
         }
       }
 
-      // Mark onboarding as complete in AsyncStorage for guests (not Supabase)
+      // Mark onboarding as complete
       await AsyncStorage.setItem('hasCompletedOnboarding', 'true');
-
-      // Verify credits were saved before navigation
-      const savedCredits = await AsyncStorage.getItem('guest_credits');
-
-      // Small delay to ensure all async operations complete
-      await new Promise(resolve => setTimeout(resolve, 100));
 
       // Navigate to generate screen
       router.replace('/(tabs)/generate');
     } catch (error) {
+      console.error('Failed to continue as guest:', error);
       Alert.alert('Error', 'Failed to continue as guest. Please try again.');
     }
   };
 
   const simulatePurchaseInExpoGo = async () => {
     try {
-      setCurrentPurchaseAttempt(selectedPlan);
-
-      // Check if guest mode
-      const isGuest = await isGuestSession();
-
-      if (isGuest) {
-
-        // Calculate credits based on consumable pack
-        let credits = 0;
-        if (selectedPlan === 'starter') credits = 15;
-        else if (selectedPlan === 'value') credits = 45;
-        else if (selectedPlan === 'pro') credits = 120;
-
-        const purchaseId = `expo_go_guest_${Date.now()}`;
-        const purchaseTime = new Date().toISOString();
-
-        // Save guest purchase locally
-        await saveGuestPurchase({
-          plan: selectedPlan,
-          purchaseId,
-          purchaseTime,
-          productId: PRODUCT_IDS[selectedPlan],
-          isActive: true
-        });
-
-        // Initialize guest credits in AsyncStorage
-        await initializeGuestCredits(selectedPlan);
-
-        // Also update Supabase profile if guest has Supabase user ID
-        const { getGuestSession } = require('../src/utils/guestSession');
-        const guestSession = await getGuestSession();
-
-        if (guestSession?.supabaseUserId) {
-          const { updateSubscriptionInProfile } = require('../src/features/subscription/api');
-
-          try {
-            await updateSubscriptionInProfile(selectedPlan, purchaseId, purchaseTime);
-          } catch (error) {
-            // Don't throw - local storage is already updated
-          }
-        } else {
-        }
-
-        Alert.alert('Success', `${credits} credits added!`);
-
-        // Refresh the credits counter in header
-        await refreshCredits();
-
-        // Navigate to generate screen
-        router.replace('/(tabs)/generate');
-        return;
-      }
 
       // Get current user for authenticated flow
       const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -317,7 +179,7 @@ export default function SubscriptionScreen() {
       else if (selectedPlan === 'pro') price = 14.99;
 
       // First check if profile exists
-      const { data: existingProfile, error: checkError } = await supabase
+      const { data: existingProfile } = await supabase
         .from('profiles')
         .select('id')
         .eq('id', user.id)
@@ -365,7 +227,7 @@ export default function SubscriptionScreen() {
         is_pro_version: true,
       };
 
-      const { data: updateResult, error: updateError } = await supabase
+      const { error: updateError } = await supabase
         .from('profiles')
         .update(updateData)
         .eq('id', user.id)
@@ -376,7 +238,7 @@ export default function SubscriptionScreen() {
       }
 
       // Mark onboarding as complete
-      await completeOnboarding();
+      await AsyncStorage.setItem('hasCompletedOnboarding', 'true');
 
       // Show success message
       Alert.alert(
@@ -386,14 +248,12 @@ export default function SubscriptionScreen() {
           {
             text: 'Continue',
             onPress: () => {
-              setCurrentPurchaseAttempt(null);
               router.replace('/(tabs)/generate');
             }
           }
         ]
       );
     } catch (error: any) {
-      setCurrentPurchaseAttempt(null);
       Alert.alert('Error', error.message || 'Failed to simulate purchase');
     }
   };
@@ -412,8 +272,9 @@ export default function SubscriptionScreen() {
   const handleClose = async () => {
     // Mark onboarding as complete when user closes without purchasing
     try {
-      await completeOnboarding();
+      await AsyncStorage.setItem('hasCompletedOnboarding', 'true');
     } catch (err) {
+      console.error('Failed to mark onboarding as complete:', err);
     }
 
     router.replace('/(tabs)/generate');
@@ -537,9 +398,9 @@ export default function SubscriptionScreen() {
       {/* Continue Button - Fixed at Bottom */}
       <View style={styles.buttonContainer}>
         <TouchableOpacity
-          style={[styles.continueButton, (isExpoGo ? !!currentPurchaseAttempt : (iapStatus === 'loading' || iapStatus === 'purchasing' || !isIAPAvailable)) && { opacity: 0.6 }]}
+          style={[styles.continueButton, (isExpoGo ? !!currentPurchaseAttempt : (iapStatus === 'loading' || !!currentPurchaseAttempt || iapStatus === 'error')) && { opacity: 0.6 }]}
           onPress={handleContinue}
-          disabled={isExpoGo ? !!currentPurchaseAttempt : (iapStatus === 'loading' || iapStatus === 'purchasing' || !isIAPAvailable)}
+          disabled={isExpoGo ? !!currentPurchaseAttempt : (iapStatus === 'loading' || !!currentPurchaseAttempt || iapStatus === 'error')}
         >
           <LinearGradient
             colors={['#1e40af', '#1e3a8a']}
@@ -550,7 +411,7 @@ export default function SubscriptionScreen() {
             <Text style={styles.continueText}>
               {isExpoGo
                 ? (currentPurchaseAttempt ? 'Simulating...' : 'Get Started (Simulated)')
-                : (iapStatus === 'loading' ? 'Loading Products...' : iapStatus === 'purchasing' ? 'Processing Purchase...' : 'Get Started')
+                : (iapStatus === 'loading' ? 'Loading Products...' : currentPurchaseAttempt ? 'Processing Purchase...' : 'Get Started')
               }
             </Text>
           </LinearGradient>
@@ -602,7 +463,7 @@ export default function SubscriptionScreen() {
             <View style={styles.debugSection}>
               <Text style={styles.debugSectionTitle}>Connection</Text>
               <Text style={styles.debugText}>
-                IAP Available: {isIAPAvailable ? '✅' : '❌'}
+                IAP Available: {(iapStatus === 'ready' && products.length > 0) ? '✅' : '❌'}
               </Text>
               <Text style={styles.debugText}>
                 Status: {iapStatus}
@@ -935,10 +796,10 @@ export default function SubscriptionScreen() {
             <TouchableOpacity
               style={[styles.debugButton, { backgroundColor: '#dc2626' }]}
               onPress={async () => {
-                setCurrentPurchaseAttempt(null);
                 try {
-                  await completeOnboarding();
+                  await AsyncStorage.setItem('hasCompletedOnboarding', 'true');
                 } catch (err) {
+                  console.error('Failed to mark onboarding as complete:', err);
                 }
                 try {
                   router.replace('/(tabs)/generate');
@@ -953,8 +814,7 @@ export default function SubscriptionScreen() {
             <TouchableOpacity
               style={[styles.debugButton, { backgroundColor: '#f59e0b' }]}
               onPress={() => {
-                setCurrentPurchaseAttempt(null);
-                Alert.alert('Loading State Cleared', 'The "Processing..." state has been cleared.');
+                Alert.alert('Loading State Cleared', 'Note: Purchase state is now managed by the IAP hook.');
               }}
             >
               <Text style={styles.debugButtonText}>⏹️ Clear Loading State</Text>

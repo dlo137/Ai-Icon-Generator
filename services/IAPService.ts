@@ -1,14 +1,10 @@
 // IAPService.ts - Production-ready IAP service for react-native-iap v14+
 // Supports iOS StoreKit 2 and Android Google Play Billing
 
-import { Platform, Alert } from 'react-native';
+import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import * as RNIap from 'react-native-iap';
-import { updateSubscriptionInProfile } from '../src/features/subscription/api';
 import { PLAN_CONFIG, type SubscriptionPlan } from '../src/features/subscription/plans';
-import { isGuestSession } from '../src/utils/guestSession';
-import { saveGuestPurchase } from '../src/utils/guestPurchaseStorage';
-import { initializeGuestCredits } from '../src/utils/guestCredits';
 
 // Product IDs - must match App Store Connect / Google Play Console exactly
 // CONSUMABLE IAP product IDs
@@ -106,15 +102,6 @@ class IAPService {
         }
 
         try {
-          // Check if this is a guest purchase
-          const isGuest = await isGuestSession();
-
-          if (isGuest) {
-            console.log('[IAP] Guest mode detected - using local storage');
-            await this.handleGuestPurchase(purchase, plan);
-            return;
-          }
-
           // Verify and finish the purchase
           await this.finishPurchase(purchase);
 
@@ -149,20 +136,6 @@ class IAPService {
             purchaseTime = new Date().toISOString();
             console.log('[IAP] No transaction date, using current time:', purchaseTime);
           }
-
-          // Try to update Supabase, but don't let it block the success flow
-          console.log('[IAP] Calling updateSubscriptionInProfile with:');
-          console.log('[IAP]   - plan (user selected):', plan);
-          console.log('[IAP]   - purchaseId:', purchaseId);
-          console.log('[IAP]   - purchaseTime:', purchaseTime);
-          updateSubscriptionInProfile(plan, purchaseId, purchaseTime)
-            .then(() => {
-              console.log('[IAP] ✅ Supabase profile updated successfully');
-            })
-            .catch((error) => {
-              console.error('[IAP] ⚠️ Supabase update failed (non-blocking):', error);
-              // Error is logged but not shown to user since purchase succeeded
-            });
 
           // Update last purchase result
           this.lastPurchaseResult = {
@@ -265,122 +238,6 @@ class IAPService {
       console.error('[IAP] Error finishing purchase:', error);
       throw error;
     }
-  }
-
-  /**
-   * Handle guest purchase (device-local storage only)
-   */
-  private async handleGuestPurchase(purchase: any, plan: SubscriptionPlan): Promise<void> {
-    console.log('[IAP] ========== GUEST PURCHASE ==========');
-
-    try {
-      // 1. Finish the purchase with store
-      await this.finishPurchase(purchase);
-
-      // 2. Get purchase data
-      const purchaseId = purchase.transactionId || purchase.purchaseToken || `guest_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-      const purchaseTime = purchase.transactionDate
-        ? (typeof purchase.transactionDate === 'number'
-          ? new Date(purchase.transactionDate).toISOString()
-          : purchase.transactionDate)
-        : new Date().toISOString();
-      const productId = PLAN_CONFIG[plan].productId;
-
-      console.log('[IAP] Guest purchase ID:', purchaseId);
-      console.log('[IAP] Guest purchase time:', purchaseTime);
-      console.log('[IAP] Guest plan:', plan);
-
-      // 3. Store purchase locally
-      await saveGuestPurchase({
-        plan,
-        purchaseId,
-        purchaseTime,
-        productId,
-        isActive: true
-      });
-
-      // 4. Initialize guest credits
-      await initializeGuestCredits(plan);
-
-      // 5. Update Supabase profile if guest has a Supabase user ID
-      const { getGuestSession } = require('../src/utils/guestSession');
-      const guestSession = await getGuestSession();
-
-      console.log('[IAP] Guest session data:', JSON.stringify(guestSession, null, 2));
-
-      if (guestSession?.supabaseUserId) {
-        console.log('[IAP] ========== UPDATING GUEST SUPABASE PROFILE ==========');
-        console.log('[IAP] Guest Supabase User ID:', guestSession.supabaseUserId);
-        console.log('[IAP] Plan:', plan);
-        console.log('[IAP] Purchase ID:', purchaseId);
-        console.log('[IAP] Purchase Time:', purchaseTime);
-
-        // Import updateSubscriptionInProfile to reuse the same logic
-        const { updateSubscriptionInProfile } = require('../src/features/subscription/api');
-
-        try {
-          await updateSubscriptionInProfile(plan, purchaseId, purchaseTime);
-          console.log('[IAP] ✅✅✅ Guest Supabase profile updated successfully! ✅✅✅');
-        } catch (error) {
-          console.error('[IAP] ❌❌❌ Failed to update guest Supabase profile:', error);
-          console.error('[IAP] Error details:', JSON.stringify(error, null, 2));
-          // Don't throw - local storage is already updated, so purchase is safe
-        }
-      } else {
-        console.log('[IAP] ⚠️ Guest has no Supabase user ID - using local storage only');
-        console.log('[IAP] This means guest profile table will NOT be updated');
-      }
-
-      // 6. Update last purchase result
-      this.lastPurchaseResult = {
-        success: true,
-        productId,
-        timestamp: purchaseTime
-      };
-
-      // 6. Notify success
-      console.log('[IAP] ✅ Guest purchase complete!');
-      if (this.debugCallback) {
-        this.debugCallback({
-          listenerStatus: 'GUEST PURCHASE SUCCESS! ✅',
-          shouldNavigate: true,
-          purchaseComplete: true,
-          productId
-        });
-      }
-    } catch (error) {
-      console.error('[IAP] Error processing guest purchase:', error);
-
-      if (this.debugCallback) {
-        this.debugCallback({
-          listenerStatus: 'GUEST PURCHASE FAILED ❌'
-        });
-      }
-
-      throw error;
-    }
-  }
-
-  /**
-   * Detect consumable pack from purchase object
-   */
-  private detectPlanFromPurchase(purchase: any): SubscriptionPlan {
-    const productId = (purchase.productId || purchase.productIds?.[0] || '').toLowerCase();
-
-    console.log('[IAP] Detecting plan from productId:', productId);
-
-    // Match actual product IDs: starter.25, value.75, pro.200
-    if (productId.includes('pro') || productId.includes('200')) {
-      return 'pro';
-    } else if (productId.includes('value') || productId.includes('75')) {
-      return 'value';
-    } else if (productId.includes('starter') || productId.includes('25')) {
-      return 'starter';
-    }
-
-    // Default to starter if no match
-    console.warn('[IAP] Could not detect plan, defaulting to starter');
-    return 'starter';
   }
 
   /**
@@ -625,7 +482,6 @@ class IAPService {
 
     try {
       console.log('[IAP] Restoring purchases...');
-      const isGuest = await isGuestSession();
       const purchases = await RNIap.getAvailablePurchases();
 
       if (!purchases || purchases.length === 0) {
@@ -636,29 +492,6 @@ class IAPService {
 
       for (const purchase of purchases) {
         await this.finishPurchase(purchase);
-
-        if (isGuest) {
-          // Restore to local storage for guests
-          const plan = this.detectPlanFromPurchase(purchase);
-          const purchaseId = purchase.transactionId || purchase.purchaseToken || `restored_${Date.now()}`;
-          const purchaseTime = purchase.transactionDate
-            ? (typeof purchase.transactionDate === 'number'
-              ? new Date(purchase.transactionDate).toISOString()
-              : purchase.transactionDate)
-            : new Date().toISOString();
-
-          console.log('[IAP] Restoring guest purchase:', plan);
-
-          await saveGuestPurchase({
-            plan,
-            purchaseId,
-            purchaseTime,
-            productId: PLAN_CONFIG[plan].productId,
-            isActive: true
-          });
-
-          await initializeGuestCredits(plan);
-        }
       }
 
       return purchases;

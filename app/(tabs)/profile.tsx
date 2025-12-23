@@ -8,16 +8,9 @@ import { useModal } from '../../src/contexts/ModalContext';
 import { supabase } from '../../lib/supabase';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getSubscriptionInfo, SubscriptionInfo, getCredits, CreditsInfo } from '../../src/utils/subscriptionStorage';
-import { getSubscriptionInfo as getSupabaseSubscriptionInfo, cancelSubscription } from '../../src/features/subscription/api';
-import type { SubscriptionPlan } from '../../src/features/subscription/plans';
 import IAPService from '../../services/IAPService';
 import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as FileSystem from 'expo-file-system/legacy';
-import { isGuestSession, clearGuestSession, getGuestSession } from '../../src/utils/guestSession';
-import { getGuestPurchase, clearGuestPurchase } from '../../src/utils/guestPurchaseStorage';
-import { useCredits } from '../../src/contexts/CreditsContext';
-import { clearGuestCredits } from '../../src/utils/guestCredits';
 
 export default function ProfileScreen() {
   // Hard deletion guard to prevent recreation and repeated deletes
@@ -61,7 +54,6 @@ export default function ProfileScreen() {
     message: ''
   });
   const router = useRouter();
-  const { refreshCredits } = useCredits();
   const [products, setProducts] = useState<any[]>([]);
   const [iapReady, setIapReady] = useState(false);
   const [loadingProducts, setLoadingProducts] = useState(false);
@@ -131,7 +123,21 @@ export default function ProfileScreen() {
   // Get current subscription data from state
   const getCurrentSubscriptionDisplay = async () => {
     // Try to get from Supabase first
-    const supabaseSubInfo = await getSupabaseSubscriptionInfo();
+    const { data: { user: currentUser } } = await supabase.auth.getUser();
+    if (!currentUser) {
+      return {
+        plan: 'Free',
+        price: '$0.00',
+        renewalDate: null,
+        status: 'free'
+      };
+    }
+
+    const { data: supabaseSubInfo } = await supabase
+      .from('profiles')
+      .select('is_pro_version, subscription_plan, purchase_time')
+      .eq('id', currentUser.id)
+      .single();
 
     if (supabaseSubInfo && supabaseSubInfo.is_pro_version) {
       let price = '';
@@ -218,12 +224,11 @@ export default function ProfileScreen() {
       setCurrentPurchaseAttempt(null);
       setIsBillingModalVisible(false);
 
-      // Immediately refresh credits and user data
+      // Immediately refresh user data
       try {
-        console.log('[PROFILE] Refreshing credits immediately...');
-        await refreshCredits();
+        console.log('[PROFILE] Refreshing user data immediately...');
         await loadUserData();
-        console.log('[PROFILE] Credits and user data refreshed successfully');
+        console.log('[PROFILE] User data refreshed successfully');
 
         Alert.alert('Success!', 'Your credits have been added. Thank you for your purchase!');
       } catch (error) {
@@ -236,7 +241,7 @@ export default function ProfileScreen() {
       console.log('[PROFILE] Purchase cancelled or failed');
       setCurrentPurchaseAttempt(null);
     }
-  }, [refreshCredits]);
+  }, []);
 
   const initializeIAP = async () => {
     if (!isIAPAvailable) {
@@ -346,76 +351,6 @@ export default function ProfileScreen() {
 
   const loadUserData = async () => {
     try {
-      // FIX #2: Disable guest bootstrap when deleting
-      const isGuest = await isGuestSession();
-
-      if (isGuest && !isDeletingRef.current) {
-        // Fetch guest profile from Supabase to get the unique guest name
-        const guestSession = await getGuestSession();
-
-        let guestName = 'Guest User'; // Default fallback
-
-        if (guestSession?.supabaseUserId) {
-          // Fetch the guest's profile from Supabase
-          const { data: guestProfile, error: profileError } = await supabase
-            .from('profiles')
-            .select('name')
-            .eq('id', guestSession.supabaseUserId)
-            .single();
-
-          if (!profileError && guestProfile?.name) {
-            guestName = guestProfile.name;
-            console.log('[PROFILE] Loaded guest name from Supabase:', guestName);
-          } else {
-            console.log('[PROFILE] Could not load guest name, using default');
-          }
-        }
-
-        // Set guest data with fetched name
-        setUser({
-          email: guestName,
-          isGuest: true
-        });
-        setProfile({
-          name: guestName
-        });
-        setEditForm({
-          name: guestName
-        });
-
-        // Load guest purchase info
-        const guestPurchase = await getGuestPurchase();
-        if (guestPurchase) {
-          const planNames: Record<string, string> = {
-            starter: 'Starter',
-            value: 'Value',
-            pro: 'Pro'
-          };
-          setCurrentPlan(planNames[guestPurchase.plan] || 'Free');
-          setSubscriptionDisplay({
-            plan: planNames[guestPurchase.plan] || 'Free',
-            price: guestPurchase.plan === 'starter' ? '$1.99' :
-                   guestPurchase.plan === 'value' ? '$5.99' :
-                   guestPurchase.plan === 'pro' ? '$14.99' : '$0.00',
-            renewalDate: null,
-            status: 'active',
-            isCancelled: false
-          });
-        } else {
-          setCurrentPlan('Free');
-          setSubscriptionDisplay({
-            plan: 'Free',
-            price: '$0.00',
-            renewalDate: null,
-            status: 'free',
-            isCancelled: false
-          });
-        }
-
-        setIsLoading(false);
-        return;
-      }
-
       const userData = await getCurrentUser();
       if (!userData) {
         router.push('/login');
@@ -434,7 +369,11 @@ export default function ProfileScreen() {
       }
 
       // Load subscription info from Supabase profile
-      const supabaseSubInfo = await getSupabaseSubscriptionInfo();
+      const { data: supabaseSubInfo } = await supabase
+        .from('profiles')
+        .select('subscription_plan, is_pro_version, purchase_time')
+        .eq('id', userData.id)
+        .single();
 
       // Load local subscription info as fallback
       const subInfo = await getSubscriptionInfo();
@@ -460,9 +399,9 @@ export default function ProfileScreen() {
           planName = 'Starter';
           price = '$1.99';
         } else {
-          // Fallback: use price from database if available
+          // Fallback
           planName = 'Pro';
-          price = supabaseSubInfo.price ? `$${supabaseSubInfo.price.toFixed(2)}` : '$0.00';
+          price = '$14.99';
         }
 
         setCurrentPlan(planName);
@@ -536,14 +475,7 @@ export default function ProfileScreen() {
 
       // Do the actual sign out in the background (don't block UX)
       try {
-        // Check if we're in guest mode directly from guest session
-        const isGuest = await isGuestSession();
-
-        if (isGuest) {
-          await clearGuestSession();
-        } else {
-          await signOut();
-        }
+        await signOut();
       } catch (backgroundError) {
         // Don't show error to user - they're already being signed out
       }
@@ -579,13 +511,9 @@ export default function ProfileScreen() {
   };
 
   const handleDeleteAccount = async () => {
-    const isGuest = user?.isGuest || false;
-
     Alert.alert(
       'Delete Account',
-      isGuest
-        ? 'Are you sure you want to delete your guest data? This will remove all your saved icons and credits.'
-        : 'Are you sure you want to permanently delete your account? This action cannot be undone and all your data will be lost.',
+      'Are you sure you want to permanently delete your account? This action cannot be undone and all your data will be lost.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -608,121 +536,26 @@ export default function ProfileScreen() {
               }
               
               isDeletingRef.current = true;
-              
-              if (isGuest) {
-                console.log('[DELETE] Starting guest account deletion...');
-                
-                // Step 1: Get user ID while session exists
-                const { data: { user } } = await supabase.auth.getUser();
-                
-                if (!user) {
-                  console.log('[DELETE] No authenticated user — aborting but still redirecting');
-                  forceRedirect();
-                  return;
-                }
 
-                const userId = user.id;
-                console.log('[DELETE] Found authenticated user ID:', userId);
+              console.log('[DELETE] Starting authenticated user deletion...');
 
-                // Step 2: Delete profile from database
-                console.log('[DELETE] Deleting profile from database...');
-                const { error: deleteError } = await supabase
-                  .from('profiles')
-                  .delete()
-                  .eq('id', userId);
+              // Delete the account (also signs out)
+              await deleteAccount();
 
-                if (deleteError) {
-                  console.error('[DELETE] Error deleting profile:', deleteError);
-                  // Still redirect even if deletion failed
-                  forceRedirect();
-                  Alert.alert('Partial Deletion', 'Some data may not have been deleted, but you have been signed out.');
-                  return;
-                }
-                
-                console.log('[DELETE] Profile deleted successfully from database');
+              // Clear onboarding flag so they see onboarding again
+              await AsyncStorage.removeItem('hasCompletedOnboarding');
 
-                // Step 3: Delete auth user via Edge Function (get session first)
-                console.log('[DELETE] Getting session for Edge Function...');
-                const { data: sessionData } = await supabase.auth.getSession();
-                const accessToken = sessionData.session?.access_token;
-                
-                if (accessToken) {
-                  console.log('[DELETE] Calling delete-user Edge Function...');
-                  try {
-                    const { data: deleteUserData, error: deleteUserError } = await supabase.functions.invoke('delete-user', {
-                      headers: {
-                        Authorization: `Bearer ${accessToken}`
-                      }
-                    });
+              // Redirect to onboarding screen
+              router.dismissAll();
+              router.replace('/(tabs)/../index');
 
-                    if (deleteUserError) {
-                      console.error('[DELETE] Error calling delete-user function:', deleteUserError);
-                    } else {
-                      console.log('[DELETE] Auth user deletion response:', deleteUserData);
-                    }
-                  } catch (edgeFunctionError) {
-                    console.error('[DELETE] Edge function call failed:', edgeFunctionError);
-                  }
-                } else {
-                  console.log('[DELETE] No access token found, skipping auth user deletion');
-                }
-
-                // Step 4: Clear local data
-                console.log('[DELETE] Clearing local data...');
-                await clearGuestSession();
-                await clearGuestCredits();
-                await clearGuestPurchase();
-                await AsyncStorage.removeItem('saved_thumbnails');
-                await AsyncStorage.removeItem('hasCompletedOnboarding');
-
-                // Delete thumbnail files
-                console.log('[DELETE] Deleting thumbnail files...');
-                const thumbnailDir = `${FileSystem.documentDirectory}thumbnails/`;
-                const dirInfo = await FileSystem.getInfoAsync(thumbnailDir);
-                if (dirInfo.exists) {
-                  await FileSystem.deleteAsync(thumbnailDir, { idempotent: true });
-                }
-
-                // Step 5: REDIRECT FIRST - before signOut can cause issues
-                console.log('[DELETE] Forcing hard navigation reset BEFORE signout...');
-                forceRedirect();
-
-                // Step 6: Sign out AFTER navigation
-                console.log('[DELETE] Signing out...');
-                await supabase.auth.signOut();
-
-                // Show success message AFTER navigation
-                setTimeout(() => {
-                  Alert.alert(
-                    'Account Deleted',
-                    'All your data has been removed successfully.',
-                    [{ text: 'OK' }]
-                  );
-                }, 500);
-                
-                console.log('[DELETE] Deletion process completed');
-              } else {
-                console.log('[DELETE] Starting authenticated user deletion...');
-                // Handle authenticated user deletion
-
-                // Delete the account (also signs out)
-                await deleteAccount();
-
-                // Clear onboarding flag so they see onboarding again
-                await AsyncStorage.removeItem('hasCompletedOnboarding');
-
-                // Redirect to onboarding screen
-                router.dismissAll();
-                router.replace('/(tabs)/../index');
-
-                // Show confirmation after redirect
-                setTimeout(() => {
-                  Alert.alert(
-                    'Account Deleted',
-                    'Your account has been permanently deleted.'
-                  );
-                }, 800);
-              }
+              // Show confirmation after redirect
+              setTimeout(() => {
+                Alert.alert(
+                  'Account Deleted',
+                  'Your account has been permanently deleted.'
+                );
+              }, 800);
             } catch (error: any) {
               // ALWAYS redirect no matter what error occurs
               console.error('[DELETE] Delete account error:', error);
@@ -854,13 +687,10 @@ export default function ProfileScreen() {
       setIsBillingModalVisible(false);
       setIsBillingManagementModalVisible(false);
 
-      // Immediately refresh credits in header and profile data
-      console.log('[EXPO GO] Refreshing credits and user data...');
-      await Promise.all([
-        refreshCredits(),
-        loadUserData()
-      ]);
-      console.log('[EXPO GO] Credits and user data refreshed successfully');
+      // Immediately refresh user data
+      console.log('[EXPO GO] Refreshing user data...');
+      await loadUserData();
+      console.log('[EXPO GO] User data refreshed successfully');
 
       // Show success message
       Alert.alert(
@@ -930,14 +760,11 @@ export default function ProfileScreen() {
       setIsBillingModalVisible(false);
       setCurrentPurchaseAttempt(null);
 
-      // Immediately refresh credits in header and profile data
-      console.log('[PROFILE] Purchase successful, refreshing credits and user data...');
-      await Promise.all([
-        refreshCredits(),
-        loadUserData()
-      ]);
-      console.log('[PROFILE] Credits and user data refreshed successfully');
-      
+      // Immediately refresh user data
+      console.log('[PROFILE] Purchase successful, refreshing user data...');
+      await loadUserData();
+      console.log('[PROFILE] User data refreshed successfully');
+
       // Show success message
       Alert.alert('Success!', 'Your credits have been added. Thank you for your purchase!');
     } catch (e: any) {
@@ -971,8 +798,8 @@ export default function ProfileScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              // Call the cancel subscription API
-              await cancelSubscription();
+              // Note: Subscription cancellation is handled through the app store
+              // Users can cancel their subscription through their Apple ID or Google Play account
 
               // Update subscription display to show cancelled/inactive state
               setSubscriptionDisplay({
