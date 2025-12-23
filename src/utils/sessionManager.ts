@@ -163,17 +163,15 @@ export const checkUserSession = async (): Promise<SessionInfo> => {
           }
         }
         
-        // If not guest and no valid session, return unauthenticated
-        console.log('[SESSION] Onboarding completed but no valid session - returning unauthenticated');
-        return { isAuthenticated: isGuest, user: null, session: null, isGuest };
-      }
-        }
-        
         // Even without recent cache, if onboarding is complete and we have guest or any session indicators
         if (isGuest) {
           console.log('[SESSION] Onboarding complete + guest session = authenticated');
           return { isAuthenticated: true, user: null, session: null, isGuest: true };
         }
+        
+        // If not guest and no valid session, return unauthenticated
+        console.log('[SESSION] Onboarding completed but no valid session - returning unauthenticated');
+        return { isAuthenticated: isGuest, user: null, session: null, isGuest };
       }
       
       // Standard fallback
