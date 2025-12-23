@@ -533,13 +533,8 @@ class IAPService {
       }
 
       // Explicit parameter logging
-      const purchaseParamsIOS = { sku: productId };
-      const purchaseParamsAndroid = { skus: [productId] };
-      console.log('[IAP] Purchase params object (iOS):', JSON.stringify(purchaseParamsIOS));
-      console.log('[IAP] Purchase params object (Android):', JSON.stringify(purchaseParamsAndroid));
-      console.log('[IAP] Purchase params keys (iOS):', Object.keys(purchaseParamsIOS));
-      console.log('[IAP] Purchase params keys (Android):', Object.keys(purchaseParamsAndroid));
-      console.log('[IAP] Purchase params.sku (iOS):', purchaseParamsIOS.sku);
+      console.log('[IAP] About to call requestPurchase for platform:', Platform.OS);
+      console.log('[IAP] Product ID:', productId);
 
       // Send params to debug before calling requestPurchase
       if (this.debugCallback) {
@@ -547,20 +542,34 @@ class IAPService {
           listenerStatus: 'CALLING requestPurchase...',
           requestPurchaseParams: {
             platform: Platform.OS,
-            paramsIOS: purchaseParamsIOS,
-            paramsAndroid: purchaseParamsAndroid,
-            willUse: Platform.OS === 'ios' ? 'iOS params' : 'Android params'
+            productId: productId,
+            apiVersion: 'v14.5.0',
+            willUse: Platform.OS === 'ios' ? 'iOS requestPurchase' : 'Android requestPurchase'
           }
         });
       }
 
-      // Platform-specific API usage
-      // Type assertions needed due to incorrect type definitions in react-native-iap
-      console.log('[IAP] About to call requestPurchase for platform:', Platform.OS);
+      // Platform-specific API usage for react-native-iap v14.5.0
+      // Note: react-native-iap v14+ changed the API significantly
+      // We need to explicitly construct the request parameters
       if (Platform.OS === 'ios') {
-        await RNIap.requestPurchase(purchaseParamsIOS as any);
+        console.log('[IAP] Calling iOS requestPurchase with sku:', productId);
+        // For iOS, the parameter object MUST have exactly these fields
+        const purchaseRequest = {
+          sku: String(productId), // Ensure it's a string
+        };
+        console.log('[IAP] iOS Purchase request object:', JSON.stringify(purchaseRequest));
+        console.log('[IAP] iOS Purchase request keys:', Object.keys(purchaseRequest));
+        await (RNIap.requestPurchase as any)(purchaseRequest);
       } else {
-        await RNIap.requestPurchase(purchaseParamsAndroid as any);
+        console.log('[IAP] Calling Android requestPurchase with skus:', [productId]);
+        // For Android, the parameter object MUST have skus as an array
+        const purchaseRequest = {
+          skus: [String(productId)], // Ensure it's an array of strings
+        };
+        console.log('[IAP] Android Purchase request object:', JSON.stringify(purchaseRequest));
+        console.log('[IAP] Android Purchase request keys:', Object.keys(purchaseRequest));
+        await (RNIap.requestPurchase as any)(purchaseRequest);
       }
       console.log('[IAP] requestPurchase call completed (waiting for listener)');
 
