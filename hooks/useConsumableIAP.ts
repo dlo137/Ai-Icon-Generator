@@ -25,6 +25,8 @@ import * as RNIap from 'react-native-iap';
 import ConsumableIAPService from '../services/ConsumableIAPService';
 import { CreditPackConfig, PurchaseResult } from '../services/ConsumableIAPService';
 import { useCredits } from '../src/contexts/CreditsContext';
+import { supabase } from '../lib/supabase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export interface UseConsumableIAPResult {
   /** Available products from App Store / Google Play */
@@ -78,6 +80,81 @@ export function useConsumableIAP(creditPacks: CreditPackConfig[]): UseConsumable
         // Initialize with credit grant callback
         await ConsumableIAPService.initialize(creditPacks, async (credits: number, transactionId: string) => {
           console.log('[useConsumableIAP] Credits granted via callback:', credits, transactionId);
+          
+          try {
+            // Check if user is authenticated
+            const { data: { session } } = await supabase.auth.getSession();
+            
+            if (session?.user) {
+              // Grant credits to authenticated user
+              const { data: profile } = await supabase
+                .from('profiles')
+                .select('credits_current, product_id')
+                .eq('id', session.user.id)
+                .single();
+
+              const currentCredits = profile?.credits_current || 0;
+              const newTotal = currentCredits + credits;
+
+              // Get the product ID and price from credit packs
+              const creditPack = creditPacks.find(p => p.credits === credits);
+              const productId = creditPack?.productId || profile?.product_id;
+              
+              // Determine subscription plan and price based on product ID
+              let subscriptionPlan = 'pro';
+              let price = '$14.99';
+              
+              if (productId === 'starter.25') {
+                subscriptionPlan = 'starter';
+                price = '$1.99';
+              } else if (productId === 'value.75') {
+                subscriptionPlan = 'value';
+                price = '$5.99';
+              } else if (productId === 'pro.200') {
+                subscriptionPlan = 'pro';
+                price = '$14.99';
+              }
+
+              // Update profile with new credits
+              const { error: updateError } = await supabase
+                .from('profiles')
+                .update({
+                  credits_current: newTotal,
+                  credits_max: Math.max(newTotal, credits),
+                  purchase_time: new Date().toISOString(),
+                  product_id: productId,
+                  subscription_plan: subscriptionPlan,
+                  price: price,
+                  is_pro_version: true,
+                })
+                .eq('id', session.user.id);
+
+              if (updateError) {
+                console.error('[useConsumableIAP] Failed to update profile:', updateError);
+                throw updateError;
+              }
+
+              console.log('[useConsumableIAP] ✅ Credits granted to user:', newTotal);
+            } else {
+              // Grant credits to guest (local storage)
+              const creditsData = await AsyncStorage.getItem('guest_credits');
+              const current = creditsData ? JSON.parse(creditsData).current : 0;
+              
+              const newTotal = current + credits;
+
+              await AsyncStorage.setItem('guest_credits', JSON.stringify({
+                current: newTotal,
+                max: Math.max(newTotal, credits),
+                lastResetDate: new Date().toISOString(),
+                plan: 'guest'
+              }));
+
+              console.log('[useConsumableIAP] ✅ Credits granted to guest:', newTotal);
+            }
+          } catch (error) {
+            console.error('[useConsumableIAP] Error granting credits:', error);
+            throw error;
+          }
           
           // Refresh credits in UI
           await refreshCredits();

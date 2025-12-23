@@ -10,9 +10,9 @@ import { checkUserSession } from '../../src/utils/sessionManager';
 function TabsContent() {
   const router = useRouter();
   const { setIsBillingModalVisible } = useModal();
-  const { credits, refreshCredits } = useCredits();
+  const { credits, maxCredits, refreshCredits } = useCredits();
   const [subscriptionInfo, setSubscriptionInfo] = useState<SubscriptionInfo | null>(null);
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(false);
 
   useEffect(() => {
     checkAuthAndInitialize();
@@ -92,15 +92,6 @@ function TabsContent() {
     setTimeout(() => setIsBillingModalVisible(true), 100);
   };
 
-  // Show loading while checking authentication
-  if (isCheckingAuth) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000000' }}>
-        <Text style={{ color: '#ffffff', fontSize: 16 }}>Loading...</Text>
-      </View>
-    );
-  }
-
   return (
     <Tabs
       screenOptions={{
@@ -140,7 +131,7 @@ function TabsContent() {
               textAlign: 'center',
               letterSpacing: 0.2,
             }}>
-              {credits.current}/{credits.max} icons
+              {credits}/{maxCredits} icons
             </Text>
           </View>
         ),

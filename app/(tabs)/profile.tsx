@@ -135,7 +135,7 @@ export default function ProfileScreen() {
 
     const { data: supabaseSubInfo } = await supabase
       .from('profiles')
-      .select('is_pro_version, subscription_plan, purchase_time')
+      .select('is_pro_version, subscription_plan, product_id, purchase_time, price')
       .eq('id', currentUser.id)
       .single();
 
@@ -143,15 +143,35 @@ export default function ProfileScreen() {
       let price = '';
       let planName = currentPlan;
 
-      if (supabaseSubInfo.subscription_plan === 'pro') {
-        price = '$14.99';
-        planName = 'Pro';
-      } else if (supabaseSubInfo.subscription_plan === 'value') {
-        price = '$5.99';
-        planName = 'Value';
-      } else if (supabaseSubInfo.subscription_plan === 'starter') {
-        price = '$1.99';
-        planName = 'Starter';
+      // Try to determine from product_id first
+      if (supabaseSubInfo.product_id) {
+        if (supabaseSubInfo.product_id === 'pro.200') {
+          price = '$14.99';
+          planName = 'Pro';
+        } else if (supabaseSubInfo.product_id === 'value.75') {
+          price = '$5.99';
+          planName = 'Value';
+        } else if (supabaseSubInfo.product_id === 'starter.25') {
+          price = '$1.99';
+          planName = 'Starter';
+        }
+      } else if (supabaseSubInfo.subscription_plan) {
+        // Fallback to subscription_plan
+        if (supabaseSubInfo.subscription_plan === 'pro') {
+          price = '$14.99';
+          planName = 'Pro';
+        } else if (supabaseSubInfo.subscription_plan === 'value') {
+          price = '$5.99';
+          planName = 'Value';
+        } else if (supabaseSubInfo.subscription_plan === 'starter') {
+          price = '$1.99';
+          planName = 'Starter';
+        }
+      }
+      
+      // Use stored price if available
+      if (supabaseSubInfo.price) {
+        price = supabaseSubInfo.price;
       }
 
       return {
@@ -210,7 +230,12 @@ export default function ProfileScreen() {
   // Refresh data when screen is focused (important for guest mode)
   useFocusEffect(
     useCallback(() => {
-      loadUserData();
+      // Add a small delay to ensure Supabase has processed the update
+      const timer = setTimeout(() => {
+        loadUserData();
+      }, 100);
+      
+      return () => clearTimeout(timer);
     }, [])
   );
 
@@ -371,9 +396,11 @@ export default function ProfileScreen() {
       // Load subscription info from Supabase profile
       const { data: supabaseSubInfo } = await supabase
         .from('profiles')
-        .select('subscription_plan, is_pro_version, purchase_time')
+        .select('subscription_plan, product_id, is_pro_version, purchase_time, price')
         .eq('id', userData.id)
         .single();
+
+      console.log('[PROFILE] Loaded Supabase subscription info:', supabaseSubInfo);
 
       // Load local subscription info as fallback
       const subInfo = await getSubscriptionInfo();
@@ -384,22 +411,44 @@ export default function ProfileScreen() {
       setCredits(creditsInfo);
 
       // Determine current plan based on Supabase profile first, then fallback to local storage
-      if (supabaseSubInfo && supabaseSubInfo.subscription_plan) {
-        const plan = supabaseSubInfo.subscription_plan;
+      if (supabaseSubInfo && (supabaseSubInfo.product_id || supabaseSubInfo.subscription_plan)) {
         let planName = '';
         let price = '';
 
-        if (plan === 'pro') {
-          planName = 'Pro';
-          price = '$14.99';
-        } else if (plan === 'value') {
-          planName = 'Value';
-          price = '$5.99';
-        } else if (plan === 'starter') {
-          planName = 'Starter';
-          price = '$1.99';
-        } else {
-          // Fallback
+        // Try to determine from product_id first (most reliable for IAP)
+        if (supabaseSubInfo.product_id) {
+          if (supabaseSubInfo.product_id === 'pro.200') {
+            planName = 'Pro';
+            price = '$14.99';
+          } else if (supabaseSubInfo.product_id === 'value.75') {
+            planName = 'Value';
+            price = '$5.99';
+          } else if (supabaseSubInfo.product_id === 'starter.25') {
+            planName = 'Starter';
+            price = '$1.99';
+          }
+        } else if (supabaseSubInfo.subscription_plan) {
+          // Fallback to subscription_plan
+          const plan = supabaseSubInfo.subscription_plan;
+          if (plan === 'pro') {
+            planName = 'Pro';
+            price = '$14.99';
+          } else if (plan === 'value') {
+            planName = 'Value';
+            price = '$5.99';
+          } else if (plan === 'starter') {
+            planName = 'Starter';
+            price = '$1.99';
+          }
+        }
+
+        // Use stored price if available
+        if (supabaseSubInfo.price) {
+          price = supabaseSubInfo.price;
+        }
+
+        // Default to Pro if no match found
+        if (!planName) {
           planName = 'Pro';
           price = '$14.99';
         }
@@ -412,6 +461,8 @@ export default function ProfileScreen() {
           status: supabaseSubInfo.is_pro_version ? 'active' : 'inactive',
           isCancelled: !supabaseSubInfo.is_pro_version
         });
+        
+        console.log('[PROFILE] Set subscription display:', { planName, price, renewalDate: supabaseSubInfo.purchase_time });
       } else if (subInfo && subInfo.isActive) {
         // Fallback to local storage
         let planName = '';
@@ -544,10 +595,12 @@ export default function ProfileScreen() {
 
               // Clear onboarding flag so they see onboarding again
               await AsyncStorage.removeItem('hasCompletedOnboarding');
+              
+              console.log('[DELETE] Account deleted, redirecting to onboarding...');
 
               // Redirect to onboarding screen
-              router.dismissAll();
-              router.replace('/(tabs)/../index');
+              isDeletingRef.current = false;
+              router.replace('/');
 
               // Show confirmation after redirect
               setTimeout(() => {
@@ -562,7 +615,6 @@ export default function ProfileScreen() {
 
               // Force redirect even on error
               isDeletingRef.current = false;
-              router.dismissAll();
               router.replace('/');
 
               Alert.alert('Error', `Failed to delete account: ${error?.message || 'Unknown error'}. You have been signed out.`);
