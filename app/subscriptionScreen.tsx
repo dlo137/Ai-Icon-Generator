@@ -468,6 +468,11 @@ export default function SubscriptionScreen() {
               <Text style={styles.debugText}>
                 Status: {iapStatus}
               </Text>
+              {iapError && (
+                <Text style={[styles.debugText, { color: '#ef4444', fontWeight: 'bold' }]}>
+                  Error: {iapError}
+                </Text>
+              )}
               <Text style={styles.debugText}>
                 Products Loaded: {products.length}
               </Text>

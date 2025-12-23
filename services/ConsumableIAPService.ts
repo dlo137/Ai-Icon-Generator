@@ -284,23 +284,13 @@ class ConsumableIAPService {
       console.log('[ConsumableIAP] Requesting purchase:', productId);
       
       // Request purchase from StoreKit / Google Play
-      // react-native-iap v14.5+ requires specific structure
-      const purchaseRequest: RNIap.RequestPurchaseProps = {
-        type: 'in-app', // Consumables are 'in-app' type
-        request: Platform.OS === 'ios'
-          ? {
-              apple: {
-                sku: productId,
-              }
-            }
-          : {
-              google: {
-                skus: [productId],
-              }
-            }
-      };
-      
-      await RNIap.requestPurchase(purchaseRequest);
+      // react-native-iap v14.5.0 - correct structure with type and request
+      await RNIap.requestPurchase({
+        type: 'in-app',
+        request: Platform.OS === 'ios' 
+          ? { ios: { sku: productId } }
+          : { android: { skus: [productId] } }
+      });
 
       // NOTE: The actual purchase completion is handled by purchaseUpdatedListener
       // We return here to unblock the UI, but credits are granted asynchronously

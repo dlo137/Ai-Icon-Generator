@@ -229,7 +229,8 @@ class IAPService {
         await RNIap.acknowledgePurchaseAndroid(purchase.purchaseToken);
       } else {
         // iOS: finishTransaction with purchase object
-        await RNIap.finishTransaction({ purchase });
+        // For consumables, mark as consumable so it can be purchased again
+        await RNIap.finishTransaction({ purchase, isConsumable: true });
       }
 
       const productId = purchase.productId || purchase.productIds?.[0];
@@ -264,10 +265,8 @@ class IAPService {
       console.log('[IAP] Expected product count:', CONSUMABLE_SKUS.length);
 
       // react-native-iap v14.5.0 API for consumables
-      // Must specify type: 'in-app' for consumables (one-time purchases)
       const products = await RNIap.fetchProducts({
-        skus: CONSUMABLE_SKUS,
-        type: 'in-app' // Explicitly specify consumable type
+        skus: CONSUMABLE_SKUS
       });
 
       console.log('[IAP] Raw products response:', JSON.stringify(products, null, 2));
@@ -410,33 +409,18 @@ class IAPService {
         });
       }
 
-      // react-native-iap v14.5.0 API - requires platform-specific request wrapper
-      // API changed: now requires { request: { platform: props }, type: 'in-app' }
+      // react-native-iap v14.5.0 API - correct structure with type and request
       console.log('[IAP] Calling requestPurchase with v14.5.0 API format');
       console.log('[IAP] Platform:', Platform.OS);
       console.log('[IAP] Product ID:', productId);
 
-      // Construct the request according to v14.5.0 API
-      // For consumables (one-time purchases), use type: 'in-app'
-      const purchaseRequest: RNIap.RequestPurchaseProps = {
-        type: 'in-app', // Consumables are 'in-app' type
-        request: Platform.OS === 'ios'
-          ? {
-              // Use 'apple' (preferred) or 'ios' (deprecated but supported)
-              apple: {
-                sku: productId,
-              }
-            }
-          : {
-              // Use 'google' (preferred) or 'android' (deprecated but supported)
-              google: {
-                skus: [productId],
-              }
-            }
-      };
-
-      console.log('[IAP] Purchase request object:', JSON.stringify(purchaseRequest, null, 2));
-      await RNIap.requestPurchase(purchaseRequest);
+      // v14.5.0 requestPurchase requires type and platform-specific request
+      await RNIap.requestPurchase({
+        type: 'in-app',
+        request: Platform.OS === 'ios' 
+          ? { ios: { sku: productId } }
+          : { android: { skus: [productId] } }
+      });
       console.log('[IAP] requestPurchase call completed (waiting for listener)');
 
       // Success/error will be handled by listeners
