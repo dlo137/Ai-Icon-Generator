@@ -592,15 +592,28 @@ export default function ProfileScreen() {
 
               // Delete the account (also signs out)
               await deleteAccount();
+              console.log('[DELETE] Account deletion completed');
 
               // Clear onboarding flag so they see onboarding again
               await AsyncStorage.removeItem('hasCompletedOnboarding');
+              console.log('[DELETE] Cleared onboarding flag');
               
-              console.log('[DELETE] Account deleted, redirecting to onboarding...');
+              // Wait to ensure all operations complete
+              await new Promise(resolve => setTimeout(resolve, 500));
+              
+              console.log('[DELETE] Redirecting to onboarding...');
 
               // Redirect to onboarding screen
               isDeletingRef.current = false;
-              router.replace('/');
+              
+              // Use pushAsync for better production compatibility
+              try {
+                router.replace('/');
+              } catch (navError) {
+                console.error('[DELETE] Router replace failed:', navError);
+                // Fallback: try push
+                router.push('/');
+              }
 
               // Show confirmation after redirect
               setTimeout(() => {
@@ -608,7 +621,7 @@ export default function ProfileScreen() {
                   'Account Deleted',
                   'Your account has been permanently deleted.'
                 );
-              }, 800);
+              }, 1000);
             } catch (error: any) {
               // ALWAYS redirect no matter what error occurs
               console.error('[DELETE] Delete account error:', error);

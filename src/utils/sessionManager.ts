@@ -48,10 +48,9 @@ export const checkUserSession = async (): Promise<SessionInfo> => {
       user = result.data?.user;
       error = result.error;
     } catch (timeoutError) {      
-      // If we have a stored session and completed onboarding, try to trust it
-      if (storedSession && hasCompletedOnboarding) {
-        return { isAuthenticated: true, user: null, session: null, isGuest: false };
-      }
+      // Session check timed out - treat as unauthenticated
+      // Don't trust any cached state if we can't verify the session
+      return { isAuthenticated: false, user: null, session: null, isGuest: false };
     }
     
     if (error) {      
@@ -65,11 +64,8 @@ export const checkUserSession = async (): Promise<SessionInfo> => {
       
       // Check guest session as fallback
       const isGuest = await isGuestSession();
-      // If we have completed onboarding and have any form of session, consider authenticated
-      if (hasCompletedOnboarding && (storedSession || isGuest)) {
-        return { isAuthenticated: true, user: null, session: null, isGuest };
-      }
       
+      // Only consider authenticated if truly a guest session (not just completed onboarding)
       return { isAuthenticated: isGuest, user: null, session: null, isGuest };
     }
     
@@ -107,7 +103,7 @@ export const checkUserSession = async (): Promise<SessionInfo> => {
     
     const finalIsAuthenticated = isAuthenticated;
     
-    // Persist session state for faster startup
+    // Persist session state for faster startup ONLY if we have valid auth
     if (finalIsAuthenticated) {
       try {
         const currentTime = Date.now().toString();
@@ -118,6 +114,13 @@ export const checkUserSession = async (): Promise<SessionInfo> => {
         if (session?.user && !isGuest) {
           await AsyncStorage.setItem('lastValidAuth', currentTime);
         }
+      } catch (asyncError) {
+      }
+    } else {
+      // Clear invalid session markers
+      try {
+        await AsyncStorage.removeItem('hasValidSession');
+        await AsyncStorage.removeItem('lastValidAuth');
       } catch (asyncError) {
       }
     }
@@ -149,15 +152,21 @@ export const checkUserSession = async (): Promise<SessionInfo> => {
       
       // If user has completed onboarding, prioritize that over session checks
       if (hasCompletedOnboarding === 'true') {
-        console.log('[SESSION] User completed onboarding - considering authenticated');
+        console.log('[SESSION] User completed onboarding - checking guest status');
         
-        // If we have recent cached auth and it's not too old (< 6 hours), trust it
-        if (hasValidSession === 'true' && lastAuthCheck) {
+        // Only trust cached state if it's recent AND we're actually a guest
+        if (isGuest && hasValidSession === 'true' && lastAuthCheck) {
           const timeSinceLastCheck = Date.now() - parseInt(lastAuthCheck);
           if (timeSinceLastCheck < 21600000) { // 6 hours
-            console.log('[SESSION] Using cached auth state (onboarding completed)');
-            return { isAuthenticated: true, user: null, session: null, isGuest: false };
+            console.log('[SESSION] Using cached guest auth state');
+            return { isAuthenticated: true, user: null, session: null, isGuest: true };
           }
+        }
+        
+        // If not guest and no valid session, return unauthenticated
+        console.log('[SESSION] Onboarding completed but no valid session - returning unauthenticated');
+        return { isAuthenticated: isGuest, user: null, session: null, isGuest };
+      }
         }
         
         // Even without recent cache, if onboarding is complete and we have guest or any session indicators

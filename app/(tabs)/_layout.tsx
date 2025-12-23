@@ -77,8 +77,13 @@ function TabsContent() {
   // Refresh credits when any tab gains focus
   useFocusEffect(
     useCallback(() => {
-      refreshCredits();
-    }, [])
+      console.log('[TABS] Tab gained focus - refreshing credits');
+      refreshCredits().then(() => {
+        console.log('[TABS] Credits refreshed successfully');
+      }).catch((error) => {
+        console.error('[TABS] Error refreshing credits:', error);
+      });
+    }, [refreshCredits])
   );
 
   const loadSubscriptionInfo = async () => {

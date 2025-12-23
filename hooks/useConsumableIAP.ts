@@ -116,7 +116,9 @@ export function useConsumableIAP(creditPacks: CreditPackConfig[]): UseConsumable
               }
 
               // Update profile with new credits
-              const { error: updateError } = await supabase
+              console.log('[useConsumableIAP] Updating Supabase profile...');
+              
+              const { data: updateData, error: updateError } = await supabase
                 .from('profiles')
                 .update({
                   credits_current: newTotal,
@@ -127,14 +129,19 @@ export function useConsumableIAP(creditPacks: CreditPackConfig[]): UseConsumable
                   price: price,
                   is_pro_version: true,
                 })
-                .eq('id', session.user.id);
+                .eq('id', session.user.id)
+                .select();
 
               if (updateError) {
                 console.error('[useConsumableIAP] Failed to update profile:', updateError);
                 throw updateError;
               }
 
+              console.log('[useConsumableIAP] ✅ Supabase profile updated:', updateData);
               console.log('[useConsumableIAP] ✅ Credits granted to user:', newTotal);
+              
+              // Wait a moment to ensure Supabase processes the update
+              await new Promise(resolve => setTimeout(resolve, 500));
             } else {
               // Grant credits to guest (local storage)
               const creditsData = await AsyncStorage.getItem('guest_credits');

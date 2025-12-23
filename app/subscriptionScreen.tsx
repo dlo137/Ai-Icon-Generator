@@ -427,7 +427,7 @@ export default function SubscriptionScreen() {
       </View>
 
       {/* Debug Panel */}
-      {/* {showDebug && (
+      {showDebug && (
         <View style={styles.debugPanel}>
           <View style={styles.debugHeader}>
             <Text style={styles.debugTitle}>🔧 IAP Debug Monitor</Text>
@@ -821,17 +821,17 @@ export default function SubscriptionScreen() {
             </TouchableOpacity>
           </ScrollView>
         </View>
-      )} */}
+      )}
 
       {/* Debug Button - Enabled for IAP debugging */}
-      {/* {!showDebug && (
+      {!showDebug && (
         <TouchableOpacity
           style={styles.showDebugButton}
           onPress={() => setShowDebug(true)}
         >
           <Text style={styles.showDebugText}>🔧</Text>
         </TouchableOpacity>
-      )} */}
+      )}
     </LinearGradient>
   );
 }
