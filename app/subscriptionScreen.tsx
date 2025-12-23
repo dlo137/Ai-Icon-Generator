@@ -40,6 +40,9 @@ export default function SubscriptionScreen() {
     purchaseResult,
     purchase: purchaseIAP
   } = useIAP(productIdList);
+
+  // Check if IAP is available based on status
+  const isIAPAvailable = iapStatus === 'ready' || iapStatus === 'success' || products.length > 0;
   const [currentPurchaseAttempt, setCurrentPurchaseAttempt] = useState<'starter' | 'value' | 'pro' | null>(null);
   const hasProcessedOrphansRef = useRef<boolean>(false);
 
@@ -57,9 +60,6 @@ export default function SubscriptionScreen() {
     timestamp: new Date().toISOString()
   });
   const [showDebug, setShowDebug] = useState(false); // Debug panel hidden for production
-
-  // Check if IAP is available
-  const isIAPAvailable = products.length > 0;
 
   // Check if running in Expo Go
   const isExpoGo = Constants.executionEnvironment === 'storeClient';
@@ -537,9 +537,9 @@ export default function SubscriptionScreen() {
       {/* Continue Button - Fixed at Bottom */}
       <View style={styles.buttonContainer}>
         <TouchableOpacity
-          style={[styles.continueButton, (isExpoGo ? !!currentPurchaseAttempt : (iapStatus === 'loading' || currentPurchaseAttempt || !isIAPAvailable)) && { opacity: 0.6 }]}
+          style={[styles.continueButton, (isExpoGo ? !!currentPurchaseAttempt : (iapStatus === 'loading' || iapStatus === 'purchasing' || !isIAPAvailable)) && { opacity: 0.6 }]}
           onPress={handleContinue}
-          disabled={isExpoGo ? !!currentPurchaseAttempt : (iapStatus === 'loading' || !!currentPurchaseAttempt || !isIAPAvailable)}
+          disabled={isExpoGo ? !!currentPurchaseAttempt : (iapStatus === 'loading' || iapStatus === 'purchasing' || !isIAPAvailable)}
         >
           <LinearGradient
             colors={['#1e40af', '#1e3a8a']}
@@ -550,7 +550,7 @@ export default function SubscriptionScreen() {
             <Text style={styles.continueText}>
               {isExpoGo
                 ? (currentPurchaseAttempt ? 'Simulating...' : 'Get Started (Simulated)')
-                : (iapStatus === 'loading' ? 'Loading...' : currentPurchaseAttempt ? 'Processing...' : 'Get Started')
+                : (iapStatus === 'loading' ? 'Loading Products...' : iapStatus === 'purchasing' ? 'Processing Purchase...' : 'Get Started')
               }
             </Text>
           </LinearGradient>
