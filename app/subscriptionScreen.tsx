@@ -466,13 +466,8 @@ export default function SubscriptionScreen() {
                 IAP Available: {(iapStatus === 'ready' && products.length > 0) ? '✅' : '❌'}
               </Text>
               <Text style={styles.debugText}>
-                Status: {iapStatus}
+                Status: {iapStatus === 'error' && iapError ? `error - ${iapError}` : iapStatus}
               </Text>
-              {iapError && (
-                <Text style={[styles.debugText, { color: '#ef4444', fontWeight: 'bold' }]}>
-                  Error: {iapError}
-                </Text>
-              )}
               <Text style={styles.debugText}>
                 Products Loaded: {products.length}
               </Text>
