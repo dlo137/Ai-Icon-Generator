@@ -251,7 +251,16 @@ class ConsumableIAPService {
       const products = await RNIap.fetchProducts({ skus: productIds });
       console.log('[ConsumableIAP] Products fetched:', products?.length || 0);
       
-      return products || [];
+      // Normalize products: v14 uses 'id', but we add 'productId' for compatibility
+      const normalizedProducts = (products || []).map((p: any) => ({
+        ...p,
+        productId: p.id || p.productId, // Ensure productId exists
+        price: p.displayPrice || p.price // Normalize price
+      }));
+      
+      console.log('[ConsumableIAP] Products normalized with productId');
+      
+      return normalizedProducts;
     } catch (error) {
       console.error('[ConsumableIAP] Failed to fetch products:', error);
       return [];
