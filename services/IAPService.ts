@@ -406,8 +406,12 @@ class IAPService {
       console.log('[IAP] Platform:', Platform.OS);
       console.log('[IAP] Expected product count:', CONSUMABLE_SKUS.length);
 
-      // ✅ CORRECT - react-native-iap API for consumables
-      const products = await RNIap.fetchProducts({ skus: CONSUMABLE_SKUS });
+      // react-native-iap v14.5.0 API for consumables
+      // Must specify type: 'in-app' for consumables (one-time purchases)
+      const products = await RNIap.fetchProducts({
+        skus: CONSUMABLE_SKUS,
+        type: 'in-app' // Explicitly specify consumable type
+      });
 
       console.log('[IAP] Raw products response:', JSON.stringify(products, null, 2));
 
@@ -549,28 +553,33 @@ class IAPService {
         });
       }
 
-      // Platform-specific API usage for react-native-iap v14.5.0
-      // Note: react-native-iap v14+ changed the API significantly
-      // We need to explicitly construct the request parameters
-      if (Platform.OS === 'ios') {
-        console.log('[IAP] Calling iOS requestPurchase with sku:', productId);
-        // For iOS, the parameter object MUST have exactly these fields
-        const purchaseRequest = {
-          sku: String(productId), // Ensure it's a string
-        };
-        console.log('[IAP] iOS Purchase request object:', JSON.stringify(purchaseRequest));
-        console.log('[IAP] iOS Purchase request keys:', Object.keys(purchaseRequest));
-        await (RNIap.requestPurchase as any)(purchaseRequest);
-      } else {
-        console.log('[IAP] Calling Android requestPurchase with skus:', [productId]);
-        // For Android, the parameter object MUST have skus as an array
-        const purchaseRequest = {
-          skus: [String(productId)], // Ensure it's an array of strings
-        };
-        console.log('[IAP] Android Purchase request object:', JSON.stringify(purchaseRequest));
-        console.log('[IAP] Android Purchase request keys:', Object.keys(purchaseRequest));
-        await (RNIap.requestPurchase as any)(purchaseRequest);
-      }
+      // react-native-iap v14.5.0 API - requires platform-specific request wrapper
+      // API changed: now requires { request: { platform: props }, type: 'in-app' }
+      console.log('[IAP] Calling requestPurchase with v14.5.0 API format');
+      console.log('[IAP] Platform:', Platform.OS);
+      console.log('[IAP] Product ID:', productId);
+
+      // Construct the request according to v14.5.0 API
+      // For consumables (one-time purchases), use type: 'in-app'
+      const purchaseRequest: RNIap.RequestPurchaseProps = {
+        type: 'in-app', // Consumables are 'in-app' type
+        request: Platform.OS === 'ios'
+          ? {
+              // Use 'apple' (preferred) or 'ios' (deprecated but supported)
+              apple: {
+                sku: productId,
+              }
+            }
+          : {
+              // Use 'google' (preferred) or 'android' (deprecated but supported)
+              google: {
+                skus: [productId],
+              }
+            }
+      };
+
+      console.log('[IAP] Purchase request object:', JSON.stringify(purchaseRequest, null, 2));
+      await RNIap.requestPurchase(purchaseRequest);
       console.log('[IAP] requestPurchase call completed (waiting for listener)');
 
       // Success/error will be handled by listeners

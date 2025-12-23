@@ -3,7 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
-import IAPService from '../services/IAPService';
+import { useIAP } from '../hooks/useIAP';
 import { completeOnboarding } from '../src/features/auth/api';
 import Constants from 'expo-constants';
 import { supabase } from '../lib/supabase';
@@ -32,9 +32,14 @@ export default function SubscriptionScreen() {
   const { refreshCredits } = useCredits();
   const [selectedPlan, setSelectedPlan] = useState<'starter' | 'value' | 'pro'>('pro');
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const [products, setProducts] = useState<any[]>([]);
-  const [iapReady, setIapReady] = useState(false);
-  const [loadingProducts, setLoadingProducts] = useState(false);
+  const productIdList = [PRODUCT_IDS.starter, PRODUCT_IDS.value, PRODUCT_IDS.pro];
+  const {
+    products,
+    status: iapStatus,
+    error: iapError,
+    purchaseResult,
+    purchase: purchaseIAP
+  } = useIAP(productIdList);
   const [currentPurchaseAttempt, setCurrentPurchaseAttempt] = useState<'starter' | 'value' | 'pro' | null>(null);
   const hasProcessedOrphansRef = useRef<boolean>(false);
 
@@ -54,52 +59,33 @@ export default function SubscriptionScreen() {
   const [showDebug, setShowDebug] = useState(false); // Debug panel hidden for production
 
   // Check if IAP is available
-  const isIAPAvailable = IAPService.isAvailable();
+  const isIAPAvailable = products.length > 0;
 
   // Check if running in Expo Go
   const isExpoGo = Constants.executionEnvironment === 'storeClient';
 
-  // Stable callback for IAP events
-  const handleIAPCallback = useCallback((info: any) => {
-
-    // Update debug info
-    setDebugInfo((prev: any) => ({
-      ...prev,
-      ...info,
-      connectionStatus: IAPService.getConnectionStatus(),
-      timestamp: new Date().toISOString()
-    }));
-
-    // Handle successful purchase - navigate to generate screen
-    if (info.listenerStatus?.includes('SUCCESS') || info.listenerStatus?.includes('Navigating')) {
-      setCurrentPurchaseAttempt(null);
-
+  // Handle successful purchase from useIAP hook
+  useEffect(() => {
+    if (purchaseResult?.success) {
       // Mark onboarding as complete
       completeOnboarding().catch(err => {
+        console.error('Failed to complete onboarding:', err);
       });
 
       // Refresh the credits counter in header
       refreshCredits().catch(err => {
-        // Don't block navigation if credit refresh fails
+        console.error('Failed to refresh credits:', err);
       });
 
       // Navigate immediately without delay
-      try {
-        router.replace('/(tabs)/generate');
-      } catch (err) {
-        // Fallback: try router ref
-        const currentRouter = routerRef.current;
-        if (currentRouter && typeof currentRouter.replace === 'function') {
-          currentRouter.replace('/(tabs)/generate');
-        }
-      }
-    }
-
-    // Update loading state based on listener status
-    if (info.listenerStatus?.includes('CANCELLED') || info.listenerStatus?.includes('FAILED') || info.listenerStatus?.includes('TIMEOUT')) {
       setCurrentPurchaseAttempt(null);
+      router.replace('/(tabs)/generate');
+    } else if (purchaseResult?.error) {
+      // Handle purchase error
+      setCurrentPurchaseAttempt(null);
+      console.error('Purchase error:', purchaseResult.error);
     }
-  }, [router]);
+  }, [purchaseResult, router, refreshCredits]);
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -107,103 +93,7 @@ export default function SubscriptionScreen() {
       duration: 600,
       useNativeDriver: true,
     }).start();
-
-    initializeIAP();
-
-    // Fallback: Set IAP ready after 5 seconds if still not ready
-    const timeout = setTimeout(() => {
-      setIapReady(true);
-    }, 5000);
-
-    return () => clearTimeout(timeout);
-  }, []);
-
-  // Re-register callback whenever it changes
-  useEffect(() => {
-    if (iapReady) {
-      IAPService.setDebugCallback(handleIAPCallback);
-    }
-  }, [handleIAPCallback, iapReady]);
-
-  const initializeIAP = async () => {
-    if (!isIAPAvailable) {
-      // Set IAP ready to true even if unavailable so button is not stuck
-      setIapReady(true);
-      return;
-    }
-
-    try {
-      const initialized = await IAPService.initialize();
-      setIapReady(initialized);
-
-      if (initialized) {
-        // Set up debug callback using the stable callback
-        IAPService.setDebugCallback(handleIAPCallback);
-
-        // Check for orphaned transactions on startup
-        if (!hasProcessedOrphansRef.current) {
-          hasProcessedOrphansRef.current = true;
-          await IAPService.checkForOrphanedTransactions();
-        }
-
-        // Fetch products
-        await fetchProducts();
-      } else {
-        // If initialization failed, still set ready to true to unblock the button
-        setIapReady(true);
-      }
-    } catch (error) {
-      // Set ready to true even on error to prevent button from being stuck
-      setIapReady(true);
-      Alert.alert('Error', 'Failed to initialize purchases. Please restart the app.');
-    }
-  };
-
-  const fetchProducts = async (showErrors = false) => {
-    if (!isIAPAvailable) {
-      console.log('[SubscriptionScreen] IAP not available');
-      if (showErrors) {
-        Alert.alert('IAP Unavailable', 'In-app purchases are not available on this platform.');
-      }
-      return [];
-    }
-    try {
-      console.log('[SubscriptionScreen] Fetching products...');
-      console.log('[SubscriptionScreen] Expected product IDs:', PRODUCT_IDS);
-      setLoadingProducts(true);
-      const results = await IAPService.getProducts();
-      console.log('[SubscriptionScreen] Products returned:', results?.length || 0);
-      console.log('[SubscriptionScreen] Products:', JSON.stringify(results, null, 2));
-      
-      if (results?.length) {
-        setProducts(results);
-        console.log('[SubscriptionScreen] ✅ Products loaded successfully');
-        return results;
-      } else {
-        console.error('[SubscriptionScreen] ❌ No products returned');
-        setProducts([]);
-        if (showErrors) {
-          Alert.alert('Products Unavailable', `Could not load consumable products. Please check:
-          
-• Your internet connection
-• App Store Connect/Google Play Console setup
-• Product IDs match exactly: ${Object.values(PRODUCT_IDS).join(', ')}
-• Products are approved for sale
-• Bundle ID matches store configuration`);
-        }
-        return [];
-      }
-    } catch (err) {
-      console.error('[SubscriptionScreen] Error fetching products:', err);
-      setProducts([]);
-      if (showErrors) {
-        Alert.alert('Error', 'Failed to load products: ' + String(err instanceof Error ? err.message : err));
-      }
-      return [];
-    } finally {
-      setLoadingProducts(false);
-    }
-  };
+  }, [fadeAnim]);
 
   const handleContinue = async () => {
     if (purchaseInProgressRef.current) {
@@ -228,73 +118,15 @@ export default function SubscriptionScreen() {
     console.log('[SubscriptionScreen] Selected plan:', selectedPlan);
     console.log('[SubscriptionScreen] Current products count:', products.length);
 
-    const list = products.length ? products : await fetchProducts(true);
-    console.log('[SubscriptionScreen] Final products list length:', list.length);
-    
     const planId = PRODUCT_IDS[selectedPlan];
-    console.log('[SubscriptionScreen] Looking for product ID:', planId);
-    console.log('[SubscriptionScreen] Available product IDs:', list.map(p => p.productId || p.id));
-    
-    const product = list.find(p => (p.productId === planId) || (p.id === planId));
-    console.log('[SubscriptionScreen] Found product:', product ? 'YES' : 'NO');
-    
-    if (product) {
-      console.log('[SubscriptionScreen] Product details:', JSON.stringify(product, null, 2));
-    }
-
+    const product = products.find(p => p.productId === planId);
     if (!product) {
-      console.error('[SubscriptionScreen] ❌ Product not found!');
-      console.error('[SubscriptionScreen] Searched for:', planId);
-      console.error('[SubscriptionScreen] In products:', list.map(p => ({ id: p.id, productId: p.productId })));
-
-      // Update debug panel with error details
-      setDebugInfo((prev: any) => ({
-        ...prev,
-        lastError: {
-          message: 'Product not found',
-          searchedFor: planId,
-          availableProducts: list.map(p => p.productId || p.id),
-          selectedPlan,
-          timestamp: Date.now()
-        }
-      }));
-      return;
-    }
-
-    // Capture product details for debug panel
-    const productIdToUse = product.productId || product.id;
-    setDebugInfo((prev: any) => ({
-      ...prev,
-      purchaseAttempt: {
-        selectedPlan,
-        productIdToUse,
-        productIdType: typeof productIdToUse,
-        productIdLength: productIdToUse?.length || 0,
-        productIdIsValid: !!(productIdToUse && typeof productIdToUse === 'string' && productIdToUse.trim()),
-        productObject: {
-          id: product.id,
-          productId: product.productId,
-          title: product.title,
-          price: product.price,
-          fullObject: JSON.stringify(product, null, 2)
-        },
-        timestamp: Date.now()
-      }
-    }));
-
-    // Validate product ID before purchase
-    if (!productIdToUse || typeof productIdToUse !== 'string' || !productIdToUse.trim()) {
-      Alert.alert(
-        'Plan not available',
-        `We couldn't find the ${selectedPlan} plan (${planId}). Please try again or contact support.`
-      );
+      Alert.alert('Plan not available', `We couldn't find the ${selectedPlan} plan (${planId}). Please try again or contact support.`);
       purchaseInProgressRef.current = false;
       return;
     }
-
-    // Set the current purchase attempt BEFORE starting the purchase
     setCurrentPurchaseAttempt(selectedPlan);
-    await handlePurchase(productIdToUse);
+    await purchaseIAP(planId);
     purchaseInProgressRef.current = false;
   };
 
@@ -566,130 +398,8 @@ export default function SubscriptionScreen() {
     }
   };
 
-  const handlePurchase = async (productId: string) => {
-    // Track call count for debugging
-    const callTimestamp = Date.now();
-    setDebugInfo((prev: any) => ({
-      ...prev,
-      handlePurchaseCalls: (prev.handlePurchaseCalls || 0) + 1,
-      lastHandlePurchaseCall: {
-        productId,
-        selectedPlan,
-        timestamp: callTimestamp,
-        productIdType: typeof productId,
-        productIdValid: !!(productId && typeof productId === 'string' && productId.trim())
-      }
-    }));
-
-    if (!isIAPAvailable) {
-      Alert.alert('Purchases unavailable', 'In-app purchases are not available on this device.');
-      setCurrentPurchaseAttempt(null);
-      if (purchaseInProgressRef) purchaseInProgressRef.current = false;
-      return;
-    }
-
-    if (!productId || typeof productId !== 'string' || !productId.trim()) {
-      setDebugInfo((prev: any) => ({
-        ...prev,
-        lastError: {
-          message: 'handlePurchase validation failed',
-          productId,
-          productIdType: typeof productId,
-          productIdFalsy: !productId,
-          productIdNotString: typeof productId !== 'string',
-          productIdEmptyTrim: productId && typeof productId === 'string' && !productId.trim(),
-          selectedPlan,
-          timestamp: Date.now()
-        }
-      }));
-      Alert.alert('Purchase error', 'Missing or invalid product ID. Please try again or contact support.');
-      setCurrentPurchaseAttempt(null);
-      if (purchaseInProgressRef) purchaseInProgressRef.current = false;
-      return;
-    }
-
-    try {
-      setDebugInfo((prev: any) => ({
-        ...prev,
-        callingIAPService: {
-          productId,
-          selectedPlan,
-          timestamp: Date.now()
-        }
-      }));
-
-      await IAPService.purchaseProduct(productId, selectedPlan);
-    } catch (e: any) {
-      setCurrentPurchaseAttempt(null); // Clear on error
-      if (purchaseInProgressRef) purchaseInProgressRef.current = false;
-      const msg = String(e?.message || e);
-
-      // Save error and purchase params to debugInfo for debug panel
-      setDebugInfo((prev: any) => ({
-        ...prev,
-        lastError: {
-          message: msg,
-          productId,
-          selectedPlan,
-          timestamp: Date.now()
-        }
-      }));
-
-      // Handle already owned
-      if (/already.*(owned|subscribed)/i.test(msg)) {
-        return;
-      }
-
-      // Handle product unavailable
-      if (/item.*unavailable|product.*not.*available/i.test(msg)) {
-        return;
-      }
-
-      // Handle user cancellation
-      if (/user.*(cancel|abort)/i.test(msg) || /cancel/i.test(msg)) {
-        return;
-      }
-
-      // Handle timeout
-      if (/timeout/i.test(msg)) {
-        Alert.alert(
-          'Purchase Timeout',
-          'The purchase is taking too long. Please check your connection and try again. If you were charged, the purchase will be processed automatically.',
-          [{ text: 'OK' }]
-        );
-        return;
-      }
-
-      Alert.alert('Purchase error', msg);
-    }
-  };
-
   const handleRestore = async () => {
-    if (!isIAPAvailable) {
-      Alert.alert('Restore Failed', 'In-app purchases are not available on this device.');
-      return;
-    }
-
-    try {
-      const results = await IAPService.restorePurchases();
-      if (results.length > 0) {
-        // Mark onboarding as complete
-        await completeOnboarding();
-
-        Alert.alert('Success', 'Your purchases have been restored!', [
-          { text: 'Continue', onPress: () => router.replace('/(tabs)/generate') }
-        ]);
-      }
-    } catch (err: any) {
-      const errorMsg = String(err?.message || err);
-      if (errorMsg.includes('No previous purchases')) {
-        Alert.alert('No Purchases', 'No previous purchases were found.');
-      } else if (errorMsg.includes('Could not connect')) {
-        Alert.alert('Restore Failed', 'Could not connect to App Store.');
-      } else {
-        Alert.alert('Error', 'Something went wrong while restoring.');
-      }
-    }
+    Alert.alert('Restore Purchases', 'Restore functionality is handled automatically by the app. Any previous purchases will be restored when you launch the app.');
   };
 
   // Helper function to format price - always use fallback to show "/week" format
@@ -827,9 +537,9 @@ export default function SubscriptionScreen() {
       {/* Continue Button - Fixed at Bottom */}
       <View style={styles.buttonContainer}>
         <TouchableOpacity
-          style={[styles.continueButton, (isExpoGo ? !!currentPurchaseAttempt : (!iapReady || loadingProducts || currentPurchaseAttempt)) && { opacity: 0.6 }]}
+          style={[styles.continueButton, (isExpoGo ? !!currentPurchaseAttempt : (iapStatus === 'loading' || currentPurchaseAttempt || !isIAPAvailable)) && { opacity: 0.6 }]}
           onPress={handleContinue}
-          disabled={isExpoGo ? !!currentPurchaseAttempt : (!iapReady || loadingProducts || !!currentPurchaseAttempt)}
+          disabled={isExpoGo ? !!currentPurchaseAttempt : (iapStatus === 'loading' || !!currentPurchaseAttempt || !isIAPAvailable)}
         >
           <LinearGradient
             colors={['#1e40af', '#1e3a8a']}
@@ -840,7 +550,7 @@ export default function SubscriptionScreen() {
             <Text style={styles.continueText}>
               {isExpoGo
                 ? (currentPurchaseAttempt ? 'Simulating...' : 'Get Started (Simulated)')
-                : (!iapReady ? 'Connecting...' : loadingProducts ? 'Loading...' : currentPurchaseAttempt ? 'Processing...' : 'Get Started')
+                : (iapStatus === 'loading' ? 'Loading...' : currentPurchaseAttempt ? 'Processing...' : 'Get Started')
               }
             </Text>
           </LinearGradient>
@@ -853,16 +563,6 @@ export default function SubscriptionScreen() {
         >
           <Text style={styles.skipText}>Continue as Guest</Text>
         </TouchableOpacity>
-
-        {/* Retry Connection Button - Show when not ready (not in Expo Go) */}
-        {!isExpoGo && !iapReady && !loadingProducts && (
-          <TouchableOpacity
-            style={styles.retryButton}
-            onPress={initializeIAP}
-          >
-            <Text style={styles.retryButtonText}>🔄 Retry Connection</Text>
-          </TouchableOpacity>
-        )}
       </View>
 
       {/* Debug Panel */}
@@ -905,13 +605,10 @@ export default function SubscriptionScreen() {
                 IAP Available: {isIAPAvailable ? '✅' : '❌'}
               </Text>
               <Text style={styles.debugText}>
-                Connected: {debugInfo.connectionStatus?.isConnected ? '✅' : '❌'}
+                Status: {iapStatus}
               </Text>
               <Text style={styles.debugText}>
-                Listener Active: {debugInfo.connectionStatus?.hasListener ? '✅' : '❌'}
-              </Text>
-              <Text style={styles.debugText}>
-                IAP Ready: {iapReady ? '✅' : '❌'}
+                Products Loaded: {products.length}
               </Text>
             </View>
 
@@ -926,12 +623,6 @@ export default function SubscriptionScreen() {
               <Text style={styles.debugText}>
                 Products Loaded: {products.length}
               </Text>
-              <TouchableOpacity
-                style={styles.debugButton}
-                onPress={() => fetchProducts(true)}
-              >
-                <Text style={styles.debugButtonText}>Fetch Products (Show Errors)</Text>
-              </TouchableOpacity>
             </View>
 
             <View style={styles.debugSection}>
@@ -1229,27 +920,16 @@ export default function SubscriptionScreen() {
             <TouchableOpacity
               style={styles.debugButton}
               onPress={() => {
-                const status = IAPService.getConnectionStatus();
-                const lastResult = IAPService.getLastPurchaseResult();
                 setDebugInfo((prev: any) => ({
                   ...prev,
-                  connectionStatus: status,
-                  lastPurchaseResult: lastResult,
                   timestamp: new Date().toISOString(),
+                  iapStatus: iapStatus,
+                  productsCount: products.length,
                   manualCheck: true
                 }));
               }}
             >
               <Text style={styles.debugButtonText}>🔄 Refresh Debug Info</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.debugButton, { backgroundColor: '#16a34a' }]}
-              onPress={async () => {
-                await fetchProducts(true);
-              }}
-            >
-              <Text style={styles.debugButtonText}>🔄 Retry Load Products</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
