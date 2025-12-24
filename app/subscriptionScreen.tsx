@@ -772,6 +772,455 @@ export default function SubscriptionScreen() {
               </View>
             )}
 
+            {/* NEW: Supabase Profile Debug Section */}
+            <View style={styles.debugSection}>
+              <Text style={styles.debugSectionTitle}>📊 Current Supabase Profile</Text>
+              <TouchableOpacity
+                style={[styles.debugButton, { marginBottom: 10 }]}
+                onPress={async () => {
+                  try {
+                    const { data: { session } } = await supabase.auth.getSession();
+                    if (!session?.user) {
+                      Alert.alert('Not Authenticated', 'No user session found');
+                      return;
+                    }
+
+                    const { data: profile, error } = await supabase
+                      .from('profiles')
+                      .select('*')
+                      .eq('id', session.user.id)
+                      .single();
+
+                    if (error) {
+                      Alert.alert('Query Error', error.message);
+                      return;
+                    }
+
+                    setDebugInfo((prev: any) => ({
+                      ...prev,
+                      currentProfile: profile,
+                      profileFetchTime: new Date().toISOString(),
+                      timestamp: new Date().toISOString(),
+                    }));
+                  } catch (err: any) {
+                    Alert.alert('Error', err.message);
+                  }
+                }}
+              >
+                <Text style={styles.debugButtonText}>🔍 Fetch Current Profile</Text>
+              </TouchableOpacity>
+
+              {debugInfo.currentProfile && (
+                <>
+                  <Text style={styles.debugText}>
+                    Email: {debugInfo.currentProfile.email || 'N/A'}
+                  </Text>
+                  <Text style={[styles.debugText, { color: '#10b981' }]}>
+                    Credits: {debugInfo.currentProfile.credits_current}/{debugInfo.currentProfile.credits_max}
+                  </Text>
+                  <Text style={[styles.debugText, { color: debugInfo.currentProfile.subscription_plan ? '#10b981' : '#ef4444' }]}>
+                    Plan: {debugInfo.currentProfile.subscription_plan || '❌ NOT SET'}
+                  </Text>
+                  <Text style={[styles.debugText, { color: debugInfo.currentProfile.product_id ? '#10b981' : '#ef4444' }]}>
+                    Product ID: {debugInfo.currentProfile.product_id || '❌ NOT SET'}
+                  </Text>
+                  <Text style={[styles.debugText, { color: debugInfo.currentProfile.is_pro_version ? '#10b981' : '#ef4444' }]}>
+                    Is Pro: {debugInfo.currentProfile.is_pro_version ? '✅ YES' : '❌ NO'}
+                  </Text>
+                  <Text style={styles.debugText}>
+                    Price: {debugInfo.currentProfile.price || '❌ NOT SET'}
+                  </Text>
+                  <Text style={styles.debugTextSmall}>
+                    Purchase Time: {debugInfo.currentProfile.purchase_time ? new Date(debugInfo.currentProfile.purchase_time).toLocaleString() : 'N/A'}
+                  </Text>
+                  <Text style={styles.debugTextSmall}>
+                    Updated At: {debugInfo.currentProfile.updated_at ? new Date(debugInfo.currentProfile.updated_at).toLocaleString() : 'N/A'}
+                  </Text>
+                  <Text style={styles.debugTextSmall}>
+                    Profile ID: {debugInfo.currentProfile.id || 'N/A'}
+                  </Text>
+                  <Text style={styles.debugTextSmall}>
+                    Fetch Time: {debugInfo.profileFetchTime ? new Date(debugInfo.profileFetchTime).toLocaleTimeString() : 'N/A'}
+                  </Text>
+                </>
+              )}
+            </View>
+
+            {/* IAP Service State */}
+            <View style={styles.debugSection}>
+              <Text style={styles.debugSectionTitle}>🛒 IAP Service State</Text>
+              <Text style={styles.debugText}>
+                Available Products: {products.map(p => p.productId).join(', ') || 'None'}
+              </Text>
+              <Text style={styles.debugText}>
+                Selected Plan: {selectedPlan}
+              </Text>
+              <Text style={styles.debugText}>
+                Target Product ID: {PRODUCT_IDS[selectedPlan]}
+              </Text>
+              <Text style={[styles.debugText, { color: purchasingProduct ? '#f59e0b' : '#10b981' }]}>
+                Purchasing: {purchasingProduct || 'None'}
+              </Text>
+              <Text style={[styles.debugText, { color: iapError ? '#ef4444' : '#10b981' }]}>
+                IAP Error: {iapError || 'None'}
+              </Text>
+            </View>
+
+            {/* Test Purchase Button */}
+            <View style={styles.debugSection}>
+              <Text style={styles.debugSectionTitle}>🧪 Test Purchase Flow</Text>
+              <TouchableOpacity
+                style={[styles.debugButton, { backgroundColor: '#8b5cf6' }]}
+                onPress={async () => {
+                  try {
+                    const { data: { session } } = await supabase.auth.getSession();
+                    if (!session?.user) {
+                      Alert.alert('Error', 'No authenticated user');
+                      return;
+                    }
+
+                    // Simulate a purchase update to Supabase
+                    const testProductId = PRODUCT_IDS[selectedPlan];
+                    const testCredits = CREDIT_PACKS.find(p => p.productId === testProductId)?.credits || 15;
+                    
+                    // Get current credits
+                    const { data: profile } = await supabase
+                      .from('profiles')
+                      .select('credits_current')
+                      .eq('id', session.user.id)
+                      .single();
+
+                    const currentCredits = profile?.credits_current || 0;
+                    const newTotal = currentCredits + testCredits;
+
+                    // Map product ID to plan and price
+                    let plan = 'pro';
+                    let price = '$14.99';
+                    if (testProductId === 'starter.25') {
+                      plan = 'starter';
+                      price = '$1.99';
+                    } else if (testProductId === 'value.75') {
+                      plan = 'value';
+                      price = '$5.99';
+                    }
+
+                    // Update profile with all fields
+                    const { data: updated, error } = await supabase
+                      .from('profiles')
+                      .update({
+                        credits_current: newTotal,
+                        credits_max: Math.max(newTotal, testCredits),
+                        subscription_plan: plan,
+                        product_id: testProductId,
+                        is_pro_version: true,
+                        price: price,
+                        purchase_time: new Date().toISOString(),
+                        updated_at: new Date().toISOString(),
+                      })
+                      .eq('id', session.user.id)
+                      .select();
+
+                    if (error) {
+                      Alert.alert('Update Failed', error.message);
+                      return;
+                    }
+
+                    Alert.alert(
+                      'Test Update Success',
+                      `Updated profile with:\n• Credits: ${newTotal}\n• Plan: ${plan}\n• Product: ${testProductId}\n• Price: ${price}\n\nNow fetch profile to verify!`
+                    );
+
+                    setDebugInfo((prev: any) => ({
+                      ...prev,
+                      lastTestUpdate: updated,
+                      lastTestTime: new Date().toISOString(),
+                      timestamp: new Date().toISOString(),
+                    }));
+                  } catch (err: any) {
+                    Alert.alert('Error', err.message);
+                  }
+                }}
+              >
+                <Text style={styles.debugButtonText}>
+                  🧪 Test Direct Supabase Update ({selectedPlan})
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Code Path Comparison - Expo Go vs Production */}
+            <View style={styles.debugSection}>
+              <Text style={styles.debugSectionTitle}>🔬 Code Path Analysis</Text>
+              
+              <Text style={[styles.debugText, { color: '#fbbf24', fontWeight: 'bold', marginBottom: 8 }]}>
+                WHY EXPO GO WORKS BUT PRODUCTION DOESN'T
+              </Text>
+
+              <View style={{ backgroundColor: 'rgba(34, 197, 94, 0.1)', padding: 10, borderRadius: 6, marginBottom: 12 }}>
+                <Text style={[styles.debugText, { color: '#22c55e', fontWeight: 'bold' }]}>
+                  ✅ EXPO GO PATH (simulatePurchaseInExpoGo):
+                </Text>
+                <Text style={styles.debugTextSmall}>
+                  1. Called directly from handleContinue()
+                </Text>
+                <Text style={styles.debugTextSmall}>
+                  2. Updates Supabase DIRECTLY in this file
+                </Text>
+                <Text style={styles.debugTextSmall}>
+                  3. updateData includes: credits_current, credits_max, product_id, email, purchase_time, price, is_pro_version
+                </Text>
+                <Text style={[styles.debugTextSmall, { color: '#22c55e', fontWeight: 'bold', marginTop: 4 }]}>
+                  ⚠️ NOTE: Missing subscription_plan and updated_at!
+                </Text>
+              </View>
+
+              <View style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', padding: 10, borderRadius: 6, marginBottom: 12 }}>
+                <Text style={[styles.debugText, { color: '#ef4444', fontWeight: 'bold' }]}>
+                  ❌ PRODUCTION PATH (Real IAP):
+                </Text>
+                <Text style={styles.debugTextSmall}>
+                  1. handleContinue() calls purchase(planId)
+                </Text>
+                <Text style={styles.debugTextSmall}>
+                  2. Goes through useConsumableIAP hook
+                </Text>
+                <Text style={styles.debugTextSmall}>
+                  3. Calls ConsumableIAPService.purchaseProduct()
+                </Text>
+                <Text style={styles.debugTextSmall}>
+                  4. Triggers purchase update listener
+                </Text>
+                <Text style={styles.debugTextSmall}>
+                  5. Calls grantCreditsDirectly() or callback
+                </Text>
+                <Text style={[styles.debugTextSmall, { color: '#ef4444', fontWeight: 'bold', marginTop: 4 }]}>
+                  🔍 SUPABASE UPDATE MUST HAPPEN IN:
+                </Text>
+                <Text style={styles.debugTextSmall}>
+                  • ConsumableIAPService.grantCreditsDirectly()
+                </Text>
+                <Text style={styles.debugTextSmall}>
+                  • OR hooks/useConsumableIAP.ts callback
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                style={[styles.debugButton, { backgroundColor: '#f59e0b', marginTop: 8 }]}
+                onPress={() => {
+                  // Show comparison of update data
+                  const expoGoData = {
+                    credits_current: 'currentCredits + credits',
+                    credits_max: 'newCreditTotal > credits ? newCreditTotal : credits',
+                    product_id: 'productId',
+                    email: 'user.email',
+                    purchase_time: 'now.toISOString()',
+                    price: 'price (number)',
+                    is_pro_version: true,
+                    subscription_plan: '❌ MISSING',
+                    updated_at: '❌ MISSING',
+                  };
+
+                  const productionShouldHave = {
+                    credits_current: 'currentCredits + credits',
+                    credits_max: 'Math.max(newTotal, testCredits)',
+                    subscription_plan: 'plan string (starter/value/pro)',
+                    product_id: 'productId',
+                    is_pro_version: true,
+                    price: 'price string ($1.99/$5.99/$14.99)',
+                    purchase_time: 'new Date().toISOString()',
+                    updated_at: 'new Date().toISOString()',
+                  };
+
+                  Alert.alert(
+                    'Update Data Comparison',
+                    'EXPO GO DATA:\n' + JSON.stringify(expoGoData, null, 2) +
+                    '\n\nPRODUCTION SHOULD HAVE:\n' + JSON.stringify(productionShouldHave, null, 2),
+                    [{ text: 'OK' }]
+                  );
+                }}
+              >
+                <Text style={styles.debugButtonText}>📋 Compare Update Data</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.debugButton, { backgroundColor: '#dc2626', marginTop: 8 }]}
+                onPress={() => {
+                  Alert.alert(
+                    '🎯 WHERE TO FIX',
+                    'The issue is in:\n\n' +
+                    '1. services/ConsumableIAPService.ts\n' +
+                    '   → grantCreditsDirectly() method\n\n' +
+                    '2. hooks/useConsumableIAP.ts\n' +
+                    '   → Credit grant callback\n\n' +
+                    'These must update Supabase with ALL fields:\n' +
+                    '• credits_current\n' +
+                    '• credits_max\n' +
+                    '• subscription_plan\n' +
+                    '• product_id\n' +
+                    '• is_pro_version\n' +
+                    '• price\n' +
+                    '• purchase_time\n' +
+                    '• updated_at\n\n' +
+                    'Check if these files are using the OLD logic that only updates credits!',
+                    [{ text: 'Got It' }]
+                  );
+                }}
+              >
+                <Text style={styles.debugButtonText}>🎯 Show Where To Fix</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Real-time IAP Callback Monitor */}
+            <View style={styles.debugSection}>
+              <Text style={styles.debugSectionTitle}>📡 IAP Callback Monitor</Text>
+              <Text style={styles.debugTextSmall}>
+                This will help trace if the production callback is even firing
+              </Text>
+              
+              {debugInfo.iapCallbackFired && (
+                <View style={{ marginTop: 8, backgroundColor: 'rgba(34, 197, 94, 0.1)', padding: 8, borderRadius: 4 }}>
+                  <Text style={[styles.debugText, { color: '#22c55e' }]}>
+                    ✅ Callback Fired at: {new Date(debugInfo.iapCallbackFired).toLocaleTimeString()}
+                  </Text>
+                  <Text style={styles.debugText}>
+                    Credits Granted: {debugInfo.iapCallbackCredits || 'N/A'}
+                  </Text>
+                  <Text style={styles.debugText}>
+                    Transaction ID: {debugInfo.iapCallbackTransactionId || 'N/A'}
+                  </Text>
+                  <Text style={styles.debugText}>
+                    Product ID: {debugInfo.iapCallbackProductId || 'N/A'}
+                  </Text>
+                  {debugInfo.iapCallbackError && (
+                    <Text style={[styles.debugText, { color: '#ef4444' }]}>
+                      Error: {debugInfo.iapCallbackError}
+                    </Text>
+                  )}
+                </View>
+              )}
+
+              {!debugInfo.iapCallbackFired && (
+                <Text style={[styles.debugTextSmall, { color: '#6b7280', marginTop: 8 }]}>
+                  No callback fired yet. Make a test purchase to see callback data.
+                </Text>
+              )}
+
+              <TouchableOpacity
+                style={[styles.debugButton, { backgroundColor: '#6366f1', marginTop: 8 }]}
+                onPress={() => {
+                  setDebugInfo((prev: any) => ({
+                    ...prev,
+                    iapCallbackFired: null,
+                    iapCallbackCredits: null,
+                    iapCallbackTransactionId: null,
+                    iapCallbackProductId: null,
+                    iapCallbackError: null,
+                    timestamp: new Date().toISOString(),
+                  }));
+                  Alert.alert('Cleared', 'Callback monitor reset. Make a purchase to capture new data.');
+                }}
+              >
+                <Text style={styles.debugButtonText}>🔄 Reset Callback Monitor</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Test Real IAP Purchase (No Navigation) */}
+            <View style={styles.debugSection}>
+              <Text style={styles.debugSectionTitle}>🛍️ Test Real IAP Purchase</Text>
+              <Text style={styles.debugTextSmall}>
+                This triggers the actual IAP flow WITHOUT navigating away
+              </Text>
+              
+              {debugInfo.testPurchaseResult && (
+                <View style={{ marginTop: 8, backgroundColor: debugInfo.testPurchaseResult.success ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)', padding: 8, borderRadius: 4 }}>
+                  <Text style={[styles.debugText, { color: debugInfo.testPurchaseResult.success ? '#22c55e' : '#ef4444', fontWeight: 'bold' }]}>
+                    {debugInfo.testPurchaseResult.success ? '✅ Purchase Success' : '❌ Purchase Failed'}
+                  </Text>
+                  <Text style={styles.debugText}>
+                    Plan: {debugInfo.testPurchaseResult.plan}
+                  </Text>
+                  <Text style={styles.debugText}>
+                    Product ID: {debugInfo.testPurchaseResult.productId}
+                  </Text>
+                  <Text style={styles.debugTextSmall}>
+                    Time: {new Date(debugInfo.testPurchaseResult.timestamp).toLocaleTimeString()}
+                  </Text>
+                  {debugInfo.testPurchaseResult.error && (
+                    <Text style={[styles.debugText, { color: '#ef4444', marginTop: 4 }]}>
+                      Error: {debugInfo.testPurchaseResult.error}
+                    </Text>
+                  )}
+                </View>
+              )}
+
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                <TouchableOpacity
+                  style={[styles.debugButton, { backgroundColor: '#10b981', flex: 1, marginTop: 0 }]}
+                  disabled={purchasingProduct !== null || iapStatus !== 'ready'}
+                  onPress={async () => {
+                    if (isExpoGo) {
+                      Alert.alert('Expo Go Detected', 'This tests REAL IAP. Use the main button for Expo Go simulation.');
+                      return;
+                    }
+
+                    try {
+                      setDebugInfo((prev: any) => ({
+                        ...prev,
+                        testPurchaseResult: null,
+                      }));
+
+                      const planId = PRODUCT_IDS[selectedPlan];
+                      console.log(`[Debug] Testing IAP purchase for: ${planId}`);
+                      
+                      const result = await purchase(planId);
+                      
+                      setDebugInfo((prev: any) => ({
+                        ...prev,
+                        testPurchaseResult: {
+                          success: result.success,
+                          plan: selectedPlan,
+                          productId: planId,
+                          error: result.error || null,
+                          timestamp: new Date().toISOString(),
+                        },
+                        timestamp: new Date().toISOString(),
+                      }));
+
+                      if (result.success) {
+                        Alert.alert(
+                          '✅ Purchase Complete',
+                          `Purchase successful! Check:\n1. Profile data above\n2. IAP Callback Monitor\n3. Your Supabase dashboard\n\nStay on this screen to verify updates.`,
+                          [{ text: 'OK' }]
+                        );
+                      } else if (result.error && !result.error.includes('cancelled')) {
+                        Alert.alert('Purchase Failed', result.error);
+                      }
+                    } catch (error: any) {
+                      console.error('[Debug] Test purchase error:', error);
+                      setDebugInfo((prev: any) => ({
+                        ...prev,
+                        testPurchaseResult: {
+                          success: false,
+                          plan: selectedPlan,
+                          productId: PRODUCT_IDS[selectedPlan],
+                          error: error.message || 'Unknown error',
+                          timestamp: new Date().toISOString(),
+                        },
+                        timestamp: new Date().toISOString(),
+                      }));
+                    }
+                  }}
+                >
+                  <Text style={styles.debugButtonText}>
+                    {purchasingProduct ? '⏳ Processing...' : `💳 Buy ${selectedPlan.toUpperCase()}`}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={[styles.debugTextSmall, { color: '#fbbf24', marginTop: 8, fontStyle: 'italic' }]}>
+                ⚠️ This uses REAL IAP and will charge your test account. Results stay on this screen for debugging.
+              </Text>
+            </View>
+
             <View style={styles.debugSection}>
               <Text style={styles.debugTextSmall}>
                 Last Update: {new Date(debugInfo.timestamp).toLocaleTimeString()}
