@@ -47,7 +47,7 @@ export default function ProfileScreen() {
     isBillingManagementModalVisible,
     setIsBillingManagementModalVisible,
   } = useModal();
-  const { refreshCredits } = useCredits();
+  const { refreshCredits, setCreditsImmediate } = useCredits();
   const [selectedPlan, setSelectedPlan] = useState('pro');
   const [contactForm, setContactForm] = useState({
     name: '',
@@ -848,30 +848,88 @@ export default function ProfileScreen() {
     }
 
     try {
-      console.log('[PROFILE] Attempting to purchase:', productId, 'for plan:', plan);
-      await IAPService.purchaseProduct(productId, plan);
+      console.log('[PROFILE] 💳 Purchase started:', productId, plan);
+      
+      // 1. Get CURRENT credits BEFORE purchase
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
 
-      // On success, close modal and reload data
+      const { data: beforeProfile } = await supabase
+        .from('profiles')
+        .select('credits_current, credits_max')
+        .eq('id', user.id)
+        .single();
+
+      const creditsBeforePurchase = beforeProfile?.credits_current || 0;
+      console.log('[PROFILE] 📊 Credits before purchase:', creditsBeforePurchase);
+
+      // 2. Determine how many credits to ADD based on product
+      let creditsToAdd = 0;
+      let subscriptionPlan = 'pro';
+      let price = '$14.99';
+      
+      if (productId === 'starter.25') {
+        creditsToAdd = 15;
+        subscriptionPlan = 'starter';
+        price = '$1.99';
+      } else if (productId === 'value.75') {
+        creditsToAdd = 45;
+        subscriptionPlan = 'value';
+        price = '$5.99';
+      } else if (productId === 'pro.200') {
+        creditsToAdd = 120;
+        subscriptionPlan = 'pro';
+        price = '$14.99';
+      }
+
+      console.log('[PROFILE] 💰 Credits to add:', creditsToAdd);
+
+      // 3. Execute purchase transaction
+      await IAPService.purchaseProduct(productId, plan);
+      console.log('[PROFILE] ✅ Transaction complete');
+
+      // 4. Calculate NEW total
+      const newTotal = creditsBeforePurchase + creditsToAdd;
+      console.log('[PROFILE] 🧮 New total:', creditsBeforePurchase, '+', creditsToAdd, '=', newTotal);
+
+      // 5. Update Supabase with ADDED credits
+      const { data: updateData, error: updateError } = await supabase
+        .from('profiles')
+        .update({
+          credits_current: newTotal,
+          credits_max: Math.max(newTotal, creditsToAdd),
+          purchase_time: new Date().toISOString(),
+          product_id: productId,
+          subscription_plan: subscriptionPlan,
+          price: price,
+          is_pro_version: true,
+        })
+        .eq('id', user.id)
+        .select();
+
+      if (updateError) {
+        console.error('[PROFILE] ❌ Failed to update Supabase:', updateError);
+        throw updateError;
+      }
+
+      console.log('[PROFILE] ✅ Supabase updated:', updateData);
+
+      // 6. Update global state IMMEDIATELY (triggers header re-render)
+      setCreditsImmediate(newTotal, Math.max(newTotal, creditsToAdd));
+      console.log('[PROFILE] ⚡ Global state updated ->', newTotal);
+
       setIsBillingModalVisible(false);
       setCurrentPurchaseAttempt(null);
 
-      // Immediately refresh user data
-      console.log('[PROFILE] Purchase successful, refreshing user data...');
+      // 7. Refresh local profile data
       await loadUserData();
-      console.log('[PROFILE] User data refreshed successfully');
-      
-      // Force refresh credits in the header
-      console.log('[PROFILE] Refreshing credits in header...');
-      await refreshCredits();
-      
-      // Refresh again after a delay to ensure UI updates
-      setTimeout(async () => {
-        await refreshCredits();
-        console.log('[PROFILE] Credits refreshed after delay');
-      }, 500);
 
       // Show success message
-      Alert.alert('Success!', 'Your credits have been added. Thank you for your purchase!');
+      Alert.alert('Success!', `Your credits have been added. You now have ${newTotal} icons!\n\nYou may need to restart the app to see proper credits.`);
+      
+      console.log('[PROFILE] ✅ Purchase flow complete');
     } catch (e: any) {
       setCurrentPurchaseAttempt(null);
       const msg = String(e?.message || e);
@@ -887,7 +945,7 @@ export default function ProfileScreen() {
         return;
       }
 
-      console.error('[PROFILE] Purchase error:', msg);
+      console.error('[PROFILE] ❌ Purchase error:', msg);
       Alert.alert('Purchase error', msg);
     }
   };
