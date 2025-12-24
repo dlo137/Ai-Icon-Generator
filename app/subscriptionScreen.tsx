@@ -156,15 +156,15 @@ export default function SubscriptionScreen() {
         console.log('[SubscriptionScreen] ⏳ Waiting for credits to be granted...');
         
         // Give the service time to process the purchase and update Supabase
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        await new Promise(resolve => setTimeout(resolve, 2000));
         
         // Mark onboarding as complete
         await AsyncStorage.setItem('hasCompletedOnboarding', 'true');
         
-        // Show success message
+        // Show success message ONCE and navigate
         Alert.alert(
           '🎉 Purchase Complete!',
-          `Your ${selectedPlan} pack has been activated.\n\nYou may need to restart the app for all changes to take effect.`,
+          `Your ${selectedPlan} pack has been activated.`,
           [
             {
               text: 'Continue',

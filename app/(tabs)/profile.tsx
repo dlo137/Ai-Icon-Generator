@@ -256,8 +256,7 @@ export default function ProfileScreen() {
         console.log('[PROFILE] Refreshing user data immediately...');
         await loadUserData();
         console.log('[PROFILE] User data refreshed successfully');
-
-        Alert.alert('Success!', 'Your credits have been added. Thank you for your purchase!');
+        // Note: Alert is shown in handlePurchase, no need to show here
       } catch (error) {
         console.error('[PROFILE] Error refreshing data after purchase:', error);
       }
@@ -576,21 +575,25 @@ export default function ProfileScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              // FIX #1: Hard isDeletingAccount guard
+              // Prevent duplicate deletion attempts
               if (isDeletingRef.current) {
                 console.log('[DELETE] Deletion already in progress — aborting');
                 return;
               }
               
               isDeletingRef.current = true;
-
               console.log('[DELETE] Starting account deletion...');
 
-              // Step 1: Delete from Supabase (profile, storage, and sign out)
-              await deleteAccount();
-              console.log('[DELETE] Supabase account deleted');
+              // Step 1: Try to delete from Supabase
+              try {
+                await deleteAccount();
+                console.log('[DELETE] Supabase account deleted');
+              } catch (deleteError) {
+                console.error('[DELETE] Supabase deletion failed:', deleteError);
+                // Continue anyway to clear local data
+              }
 
-              // Step 2: Clear all local data
+              // Step 2: Always clear all local data
               await AsyncStorage.multiRemove([
                 'device_id',
                 'hasCompletedOnboarding',
@@ -602,38 +605,34 @@ export default function ProfileScreen() {
               ]);
               console.log('[DELETE] Cleared all local data');
               
-              // Wait to ensure all operations complete
-              await new Promise(resolve => setTimeout(resolve, 500));
-              
-              console.log('[DELETE] Redirecting to onboarding...');
-
-              // Redirect to onboarding screen
+              // Step 3: Show success message and redirect
               isDeletingRef.current = false;
               
-              // Show success alert first
               Alert.alert(
-                'Account Deleted Successfully',
-                'All your data has been removed. The app will restart.',
+                '✅ Account Deleted',
+                'Your account has been deleted successfully. Returning to onboarding...',
                 [
                   {
                     text: 'OK',
                     onPress: () => {
-                      // Redirect after alert
-                      try {
-                        router.replace('/');
-                      } catch (navError) {
-                        console.error('[DELETE] Router replace failed:', navError);
-                        router.push('/');
-                      }
+                      console.log('[DELETE] Redirecting to onboarding...');
+                      router.replace('/');
                     }
                   }
-                ]
+                ],
+                { 
+                  cancelable: false,
+                  onDismiss: () => {
+                    // Ensure redirect happens even if alert is dismissed
+                    console.log('[DELETE] Alert dismissed, redirecting...');
+                    router.replace('/');
+                  }
+                }
               );
             } catch (error: any) {
-              // ALWAYS redirect no matter what error occurs
-              console.error('[DELETE] Delete account error:', error);
-
-              // Clear storage even on error
+              console.error('[DELETE] Critical error during deletion:', error);
+              
+              // Always clear local data even on error
               try {
                 await AsyncStorage.multiRemove([
                   'device_id',
@@ -644,22 +643,33 @@ export default function ProfileScreen() {
                   'hasValidSession',
                   'lastValidAuth'
                 ]);
+                console.log('[DELETE] Emergency data clear successful');
               } catch (clearError) {
                 console.error('[DELETE] Failed to clear storage:', clearError);
               }
 
-              // Force redirect even on error
+              // Always redirect with a message
               isDeletingRef.current = false;
               
               Alert.alert(
-                'Data Cleared', 
-                'All local data has been removed. The app will restart.',
+                '✅ Data Cleared',
+                'All local data has been removed. Returning to onboarding...',
                 [
                   {
                     text: 'OK',
-                    onPress: () => router.replace('/')
+                    onPress: () => {
+                      console.log('[DELETE] Error case - redirecting to onboarding...');
+                      router.replace('/');
+                    }
                   }
-                ]
+                ],
+                {
+                  cancelable: false,
+                  onDismiss: () => {
+                    console.log('[DELETE] Error alert dismissed, redirecting...');
+                    router.replace('/');
+                  }
+                }
               );
             }
           }
@@ -853,79 +863,49 @@ export default function ProfileScreen() {
     try {
       console.log('[PROFILE] 💳 Purchase started:', productId, plan);
       
-      // 1. Get CURRENT credits BEFORE purchase
+      // Get current user for verification
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         throw new Error('User not authenticated');
       }
 
-      const { data: beforeProfile } = await supabase
-        .from('profiles')
-        .select('credits_current, credits_max')
-        .eq('id', user.id)
-        .single();
-
-      const creditsBeforePurchase = beforeProfile?.credits_current || 0;
-      console.log('[PROFILE] 📊 Credits before purchase:', creditsBeforePurchase);
-
-      // 2. Determine how many credits to ADD based on product
+      // Determine how many credits will be added (for display)
       let creditsToAdd = 0;
-      let subscriptionPlan = 'pro';
-      let price = 14.99;  // Numeric, not string with $
-      
       if (productId === 'starter.25') {
         creditsToAdd = 15;
-        subscriptionPlan = 'starter';
-        price = 1.99;
       } else if (productId === 'value.75') {
         creditsToAdd = 45;
-        subscriptionPlan = 'value';
-        price = 5.99;
       } else if (productId === 'pro.200') {
         creditsToAdd = 120;
-        subscriptionPlan = 'pro';
-        price = 14.99;
       }
 
       console.log('[PROFILE] 💰 Credits to add:', creditsToAdd);
 
-      // 3. Execute purchase transaction
+      // Execute purchase transaction
+      // NOTE: ConsumableIAPService will automatically grant credits to Supabase
       await IAPService.purchaseProduct(productId, plan);
       console.log('[PROFILE] ✅ Transaction complete');
 
-      // 4. Calculate NEW total
-      const newTotal = creditsBeforePurchase + creditsToAdd;
-      // 5. Update Supabase with ADDED credits
-      const { data: updateData, error: updateError } = await supabase
-        .from('profiles')
-        .update({
-          credits_current: newTotal,
-          credits_max: Math.max(newTotal, creditsToAdd),
-          purchase_time: new Date().toISOString(),
-          product_id: productId,
-          subscription_plan: subscriptionPlan,
-          price: price,
-          is_pro_version: true,
-        })
-        .eq('id', user.id)
-        .select();
-
-      if (updateError) {
-        throw updateError;
-      }
-
-      // 6. Update global state IMMEDIATELY (triggers header re-render)
-      setCreditsImmediate(newTotal, Math.max(newTotal, creditsToAdd));
-      console.log('[PROFILE] ⚡ Global state updated ->', newTotal);
+      // Wait a moment for backend to process
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
       setIsBillingModalVisible(false);
       setCurrentPurchaseAttempt(null);
 
-      // 7. Refresh local profile data
+      // Refresh local profile data to get updated credits from backend
       await loadUserData();
       
-      // 8. Force refresh credits context (this updates the header)
+      // Force refresh credits context (this updates the header)
       await refreshCredits();
+
+      // Get the new total for display
+      const { data: afterProfile } = await supabase
+        .from('profiles')
+        .select('credits_current')
+        .eq('id', user.id)
+        .single();
+
+      const newTotal = afterProfile?.credits_current || 0;
 
       // Show success message
       Alert.alert(
