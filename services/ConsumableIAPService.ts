@@ -460,6 +460,9 @@ class ConsumableIAPService {
     console.log('[ConsumableIAP]   • is_pro_version: true');
     console.log('[ConsumableIAP]   • price:', price);
     console.log('[ConsumableIAP]   • purchase_time: (now)');
+    console.log('[ConsumableIAP]   • subscription_start_date: (now)');
+    console.log('[ConsumableIAP]   • subscription_end_date: null (consumable)');
+    console.log('[ConsumableIAP]   • subscription_id:', transactionId);
     console.log('[ConsumableIAP]   • updated_at: (now)');
 
     // Update profile with COMPLETE subscription data
@@ -475,6 +478,9 @@ class ConsumableIAPService {
         product_id: productId,
         is_pro_version: true,
         price: price,
+        subscription_start_date: new Date().toISOString(),
+        subscription_end_date: null, // Consumable packs don't have expiration
+        subscription_id: transactionId, // Use transaction ID as subscription ID
         
         // Timestamps
         purchase_time: new Date().toISOString(),

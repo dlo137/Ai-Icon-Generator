@@ -1398,7 +1398,7 @@ export default function ProfileScreen() {
                 style={styles.continueGradient}
               >
                 <Text style={styles.continueText}>
-                  {!iapReady ? 'Connecting...' : loadingProducts ? 'Loading...' : currentPurchaseAttempt ? 'Processing...' : 'Purchase Credits'}
+                  {!iapReady ? 'Connecting...' : loadingProducts ? 'Loading...' : currentPurchaseAttempt ? 'Processing...' : 'Start Creating'}
                 </Text>
               </LinearGradient>
             </TouchableOpacity>

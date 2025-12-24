@@ -33,6 +33,29 @@ function TabsContent() {
         hasCompletedOnboarding: hasCompletedOnboarding === 'true'
       });
       
+      // CRITICAL: Verify user has a valid profile in the database
+      if (sessionInfo.isAuthenticated) {
+        const { data: { user } } = await require('../../lib/supabase').supabase.auth.getUser();
+        if (user) {
+          const { data: profile, error: profileError } = await require('../../lib/supabase').supabase
+            .from('profiles')
+            .select('id, name, email')
+            .eq('id', user.id)
+            .maybeSingle();
+          
+          if (profileError || !profile) {
+            console.log('[TABS] User authenticated but no profile found - forcing sign out and redirect to onboarding');
+            // Clear everything and start fresh
+            await AsyncStorage.removeItem('hasCompletedOnboarding');
+            await require('../../lib/supabase').supabase.auth.signOut();
+            router.replace('/');
+            return;
+          }
+          
+          console.log('[TABS] Valid profile found:', profile.name || profile.email);
+        }
+      }
+      
       // If not authenticated AND hasn't completed onboarding, redirect to welcome
       if (!sessionInfo.isAuthenticated && hasCompletedOnboarding !== 'true') {
         console.log('[TABS] No valid session and no onboarding completion - redirecting to welcome');

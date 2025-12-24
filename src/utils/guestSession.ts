@@ -196,46 +196,40 @@ export async function upgradeGuestToAccount(userId: string): Promise<void> {
 }
 
 /**
- * Generate a sequential unique username (user1, user2, etc.)
- * Queries the database to find the next available number
+ * Generate a unique username using timestamp + random number
+ * Format: user{timestamp}{random} (e.g., user120, user123, user4567)
+ * This prevents collisions even with concurrent guest account creation
  */
 export async function generateSequentialUsername(): Promise<string> {
   try {
-    // Query all profiles with names like 'user%' to find the highest number
-    const { data: profiles, error } = await supabase
+    // Generate unique username using timestamp (last 3 digits) + random 2-digit number
+    const timestamp = Date.now();
+    const lastThreeDigits = timestamp % 1000; // Get last 3 digits
+    const randomNum = Math.floor(Math.random() * 100); // Random 0-99
+    const uniqueNumber = parseInt(`${lastThreeDigits}${randomNum}`);
+    
+    const username = `user${uniqueNumber}`;
+    
+    // Verify this username doesn't exist (very unlikely but check anyway)
+    const { data: existing } = await supabase
       .from('profiles')
       .select('name')
-      .like('name', 'user%');
+      .eq('name', username)
+      .maybeSingle();
 
-    if (error) {
-      console.error('[Guest Session] Error querying profiles for username:', error);
-      // Fallback to timestamp-based username if query fails
-      return `user${Date.now()}`;
+    if (existing) {
+      // If collision (extremely rare), add another random component
+      const extraRandom = Math.floor(Math.random() * 1000);
+      const fallbackUsername = `user${uniqueNumber}${extraRandom}`;
+      console.log('[Guest Session] Username collision, using fallback:', fallbackUsername);
+      return fallbackUsername;
     }
 
-    // Extract numbers from usernames like 'user1', 'user2', etc.
-    let maxNumber = 0;
-    if (profiles && profiles.length > 0) {
-      profiles.forEach(profile => {
-        if (profile.name) {
-          const match = profile.name.match(/^user(\d+)$/);
-          if (match) {
-            const num = parseInt(match[1], 10);
-            if (num > maxNumber) {
-              maxNumber = num;
-            }
-          }
-        }
-      });
-    }
-
-    // Return next sequential number
-    const nextNumber = maxNumber + 1;
-    console.log('[Guest Session] Generated sequential username: user' + nextNumber);
-    return `user${nextNumber}`;
+    console.log('[Guest Session] Generated unique username:', username);
+    return username;
   } catch (error) {
-    console.error('[Guest Session] Error generating sequential username:', error);
-    // Fallback to timestamp-based username
+    console.error('[Guest Session] Error generating username:', error);
+    // Fallback to fully random timestamp-based username
     return `user${Date.now()}`;
   }
 }

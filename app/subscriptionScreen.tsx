@@ -335,10 +335,15 @@ export default function SubscriptionScreen() {
         credits_current: newCreditTotal,
         credits_max: newMax, // Pack size, or current if current > pack size
         product_id: productId,
+        subscription_plan: selectedPlan, // Add subscription plan
+        subscription_start_date: now.toISOString(), // Add start date
+        subscription_end_date: null, // Consumable packs don't expire
+        subscription_id: `sim_${Date.now()}_${user.id}`, // Simulated subscription ID
         email: user.email,
         purchase_time: now.toISOString(),
         price: price,
         is_pro_version: true,
+        updated_at: now.toISOString(), // Add updated_at
       };
 
       const { error: updateError } = await supabase
@@ -524,8 +529,8 @@ export default function SubscriptionScreen() {
           >
             <Text style={styles.continueText}>
               {isExpoGo
-                ? (currentPurchaseAttempt ? 'Simulating...' : 'Get Started (Simulated)')
-                : (iapStatus === 'loading' ? 'Loading Products...' : currentPurchaseAttempt ? 'Processing Purchase...' : 'Get Started')
+                ? (currentPurchaseAttempt ? 'Simulating...' : 'Start Creating (Simulated)')
+                : (iapStatus === 'loading' ? 'Loading Products...' : currentPurchaseAttempt ? 'Processing Purchase...' : 'Start Creating')
               }
             </Text>
           </LinearGradient>
@@ -540,8 +545,8 @@ export default function SubscriptionScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Debug Panel */}
-      {showDebug && (
+      {/* Debug Panel - Commented out for production */}
+      {false && showDebug && (
         <View style={styles.debugPanel}>
           <View style={styles.debugHeader}>
             <Text style={styles.debugTitle}>🔧 IAP Debug Monitor</Text>
@@ -1564,8 +1569,8 @@ export default function SubscriptionScreen() {
         </View>
       )}
 
-      {/* Debug Button - Enabled for IAP debugging */}
-      {!showDebug && (
+      {/* Debug Button - Commented out for production */}
+      {false && !showDebug && (
         <TouchableOpacity
           style={styles.showDebugButton}
           onPress={() => setShowDebug(true)}
