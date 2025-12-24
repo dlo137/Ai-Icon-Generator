@@ -584,29 +584,40 @@ export default function ProfileScreen() {
               isDeletingRef.current = true;
               console.log('[DELETE] Starting account deletion...');
 
-              // Step 1: Try to delete from Supabase
+              // Step 1: Always clear all local data FIRST (before deleting Supabase)
+              try {
+                await AsyncStorage.multiRemove([
+                  'device_id',
+                  'hasCompletedOnboarding',
+                  'guest_credits',
+                  'credits',
+                  'lastAuthCheck',
+                  'hasValidSession',
+                  'lastValidAuth'
+                ]);
+                console.log('[DELETE] Cleared all local data');
+              } catch (storageError) {
+                console.error('[DELETE] Failed to clear local storage:', storageError);
+                // Continue anyway
+              }
+
+              // Step 2: Try to delete from Supabase
               try {
                 await deleteAccount();
                 console.log('[DELETE] Supabase account deleted');
               } catch (deleteError) {
                 console.error('[DELETE] Supabase deletion failed:', deleteError);
-                // Continue anyway to clear local data
+                // Continue anyway since local data is cleared
               }
-
-              // Step 2: Always clear all local data
-              await AsyncStorage.multiRemove([
-                'device_id',
-                'hasCompletedOnboarding',
-                'guest_credits',
-                'credits',
-                'lastAuthCheck',
-                'hasValidSession',
-                'lastValidAuth'
-              ]);
-              console.log('[DELETE] Cleared all local data');
               
               // Step 3: Show success message and redirect
               isDeletingRef.current = false;
+              
+              // Redirect immediately in case alert doesn't show due to auth state changes
+              setTimeout(() => {
+                console.log('[DELETE] Fallback redirect triggered');
+                router.replace('/');
+              }, 100);
               
               Alert.alert(
                 '✅ Account Deleted',
@@ -650,6 +661,12 @@ export default function ProfileScreen() {
 
               // Always redirect with a message
               isDeletingRef.current = false;
+              
+              // Immediate fallback redirect
+              setTimeout(() => {
+                console.log('[DELETE] Error fallback redirect triggered');
+                router.replace('/');
+              }, 100);
               
               Alert.alert(
                 '✅ Data Cleared',

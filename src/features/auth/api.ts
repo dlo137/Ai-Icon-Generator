@@ -152,23 +152,21 @@ export async function deleteAccount(): Promise<void> {
       // Continue anyway - profile might not exist or might be cascade deleted
     }
 
-    // Step 5: Try to delete via edge function first (if deployed)
+    // Step 5: Try to delete via edge function (if deployed)
+    // Note: The edge function permanently deletes the user from auth
+    // No need to sign out - the user is already deleted and the caller handles redirect
     try {
-      const { error: deleteError } = await supabase.functions.invoke('delete-user', {
+      await supabase.functions.invoke('delete-user', {
         body: { userId: user.id }
       });
-
-      if (!deleteError) {
-        // Successfully deleted via edge function
-        await supabase.auth.signOut();
-        return;
-      }
     } catch (edgeFunctionError) {
-      // Edge function not available, continuing with sign out
+      // Edge function not available or failed - that's okay
+      // The profile is already deleted and local storage is cleared by caller
+      console.log('[DELETE] Edge function not available:', edgeFunctionError);
     }
 
-    // Step 6: Sign out the user
-    await supabase.auth.signOut();
+    // Don't sign out here - it triggers auth listeners that compete with the redirect
+    // The caller (profile.tsx) handles the redirect after clearing local storage
 
   } catch (error) {
     throw error;
