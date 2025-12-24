@@ -45,25 +45,64 @@ export async function getGuestSession(): Promise<string | null> {
 
 /**
  * Create a new guest session
+ * Creates an anonymous Supabase auth user and profile with unique name
  */
 export async function createGuestSession(): Promise<string> {
   try {
     // Set flag to prevent race conditions
     await AsyncStorage.setItem(CREATING_GUEST_SESSION_KEY, 'true');
 
-    // Generate a unique guest ID
-    const guestId = `guest_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    console.log('[Guest Session] Creating anonymous Supabase user...');
+
+    // Create anonymous Supabase auth user
+    const { data: authData, error: authError } = await supabase.auth.signInAnonymously();
+
+    if (authError || !authData.user) {
+      console.error('[Guest Session] Failed to create anonymous user:', authError);
+      throw new Error('Failed to create guest account');
+    }
+
+    const userId = authData.user.id;
+    console.log('[Guest Session] Anonymous user created:', userId);
+
+    // Generate sequential username (user1, user2, etc.)
+    const username = await generateSequentialUsername();
+
+    // Create or update Supabase profile for guest user
+    // Use upsert in case profile was auto-created
+    // Start with 0 credits - they'll get 3 only if they continue as guest (not purchase)
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .upsert({
+        id: userId,
+        name: username,
+        email: null, // Leave email blank for guests
+        credits_current: 0,
+        credits_max: 0,
+        is_pro_version: false,
+        onboarding_completed: false,
+        updated_at: new Date().toISOString(),
+      }, {
+        onConflict: 'id'
+      });
+
+    if (profileError) {
+      console.error('[Guest Session] Failed to create/update profile:', profileError);
+      throw new Error('Failed to create guest profile');
+    }
     
-    // Store guest session info
+    console.log('[Guest Session] Profile created/updated for guest:', username);
+
+    // Store guest session info in AsyncStorage
     await AsyncStorage.setItem(GUEST_SESSION_KEY, 'true');
-    await AsyncStorage.setItem(GUEST_ID_KEY, guestId);
+    await AsyncStorage.setItem(GUEST_ID_KEY, userId);
     
-    console.log('[Guest Session] Created new guest session:', guestId);
+    console.log('[Guest Session] Created new guest session:', { userId, username });
     
     // Clear the creating flag
     await AsyncStorage.removeItem(CREATING_GUEST_SESSION_KEY);
     
-    return guestId;
+    return userId;
   } catch (error) {
     console.error('[Guest Session] Error creating guest session:', error);
     await AsyncStorage.removeItem(CREATING_GUEST_SESSION_KEY);

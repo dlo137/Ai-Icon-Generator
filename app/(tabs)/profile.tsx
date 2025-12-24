@@ -7,6 +7,7 @@ import { getCurrentUser, getMyProfile, updateMyProfile, signOut, deleteAccount }
 import { useModal } from '../../src/contexts/ModalContext';
 import { useCredits } from '../../src/contexts/CreditsContext';
 import { supabase } from '../../lib/supabase';
+import { isGuestSession } from '../../src/utils/guestSession';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getSubscriptionInfo, SubscriptionInfo, getCredits, CreditsInfo } from '../../src/utils/subscriptionStorage';
 import IAPService from '../../services/IAPService';
@@ -23,6 +24,7 @@ export default function ProfileScreen() {
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isGuest, setIsGuest] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState({
     name: ''
@@ -384,6 +386,10 @@ export default function ProfileScreen() {
       }
 
       setUser(userData);
+
+      // Check if user is a guest
+      const guestStatus = await isGuestSession();
+      setIsGuest(guestStatus);
 
       const profileData = await getMyProfile();
       setProfile(profileData);
@@ -1044,14 +1050,11 @@ export default function ProfileScreen() {
         <View style={styles.profileHeader}>
           <View style={styles.avatar}>
             <Text style={styles.avatarText}>
-              {user?.isGuest
-                ? (profile?.name?.charAt(0).toUpperCase() || 'G')
-                : (user?.email?.charAt(0).toUpperCase() || '?')
-              }
+              {isGuest ? 'G' : (user?.email?.charAt(0).toUpperCase() || '?')}
             </Text>
           </View>
           <Text style={styles.email}>
-            {user?.isGuest ? (profile?.name || 'Guest') : user?.email}
+            {isGuest ? (profile?.name || 'Guest') : user?.email}
           </Text>
         </View>
 
