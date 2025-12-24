@@ -78,8 +78,8 @@ export function useConsumableIAP(creditPacks: CreditPackConfig[]): UseConsumable
         console.log('[useConsumableIAP] Initializing IAP service...');
         
         // Initialize with credit grant callback
-        await ConsumableIAPService.initialize(creditPacks, async (credits: number, transactionId: string) => {
-          console.log('[useConsumableIAP] Credits granted via callback:', credits, transactionId);
+        await ConsumableIAPService.initialize(creditPacks, async (credits: number, transactionId: string, productId: string) => {
+          console.log('[useConsumableIAP] Credits granted via callback:', credits, transactionId, productId);
           
           try {
             // Update Supabase profile
@@ -95,16 +95,12 @@ export function useConsumableIAP(creditPacks: CreditPackConfig[]): UseConsumable
             // Get current credits
             const { data: profile } = await supabase
               .from('profiles')
-              .select('credits_current, product_id')
+              .select('credits_current')
               .eq('id', session.user.id)
               .single();
 
             const currentCredits = profile?.credits_current || 0;
             const newTotal = currentCredits + credits;
-
-            // Get the product ID and price from credit packs
-            const creditPack = creditPacks.find(p => p.credits === credits);
-            const productId = creditPack?.productId || profile?.product_id;
             
             // Determine subscription plan and price based on product ID
             let subscriptionPlan = 'pro';
@@ -121,7 +117,7 @@ export function useConsumableIAP(creditPacks: CreditPackConfig[]): UseConsumable
               price = '$14.99';
             }
 
-            // Update profile with new credits
+            // Update profile with new credits and all subscription data
             const { data: updateData, error: updateError } = await supabase
               .from('profiles')
               .update({
@@ -132,6 +128,7 @@ export function useConsumableIAP(creditPacks: CreditPackConfig[]): UseConsumable
                 subscription_plan: subscriptionPlan,
                 price: price,
                 is_pro_version: true,
+                updated_at: new Date().toISOString(),
               })
               .eq('id', session.user.id)
               .select();

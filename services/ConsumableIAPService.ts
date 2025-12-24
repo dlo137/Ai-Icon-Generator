@@ -55,7 +55,7 @@ export interface PurchaseResult {
 /**
  * Callback for credit granting
  */
-export type CreditGrantCallback = (credits: number, transactionId: string) => Promise<void>;
+export type CreditGrantCallback = (credits: number, transactionId: string, productId: string) => Promise<void>;
 
 class ConsumableIAPService {
   private static instance: ConsumableIAPService;
@@ -206,12 +206,12 @@ class ConsumableIAPService {
       // This should be idempotent - safe to call multiple times
       if (this.creditGrantCallback) {
         console.log('[ConsumableIAP] 📞 Calling credit grant callback...');
-        await this.creditGrantCallback(credits, transactionId);
+        await this.creditGrantCallback(credits, transactionId, productId);
         console.log('[ConsumableIAP] ✅ Credit grant callback completed');
       } else {
         // Fallback if callback not set
         console.log('[ConsumableIAP] ⚠️ No callback set, using direct grant...');
-        await this.grantCreditsDirectly(credits, transactionId);
+        await this.grantCreditsDirectly(credits, transactionId, productId);
         console.log('[ConsumableIAP] ✅ Direct credit grant completed');
       }
 
@@ -360,13 +360,15 @@ class ConsumableIAPService {
    * Fallback method to grant credits directly.
    * 
    * This is called if no callback was provided during initialization.
-   * Grants credits to Supabase profile.
+   * Grants credits to Supabase profile with FULL subscription data.
    * 
    * @param credits - Number of credits to grant
    * @param transactionId - Transaction ID for tracking
+   * @param productId - Product ID that was purchased
    */
-  private async grantCreditsDirectly(credits: number, transactionId: string): Promise<void> {
+  private async grantCreditsDirectly(credits: number, transactionId: string, productId: string): Promise<void> {
     console.log('[ConsumableIAP] Granting credits directly to Supabase:', credits);
+    console.log('[ConsumableIAP] Product ID:', productId);
 
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError || !user) {
@@ -384,13 +386,40 @@ class ConsumableIAPService {
     const currentCredits = profile?.credits_current || 0;
     const newTotal = currentCredits + credits;
 
-    // Update profile
+    // Map productId to plan and price
+    let plan = 'starter';
+    let price = 1.99;
+    
+    if (productId.includes('starter.25')) {
+      plan = 'starter';
+      price = 1.99;
+    } else if (productId.includes('value.75')) {
+      plan = 'value';
+      price = 5.99;
+    } else if (productId.includes('pro.200')) {
+      plan = 'pro';
+      price = 14.99;
+    }
+
+    console.log('[ConsumableIAP] Mapped to plan:', plan, 'price:', price);
+
+    // Update profile with COMPLETE subscription data
     const { error: updateError } = await supabase
       .from('profiles')
       .update({
+        // Credits
         credits_current: newTotal,
         credits_max: Math.max(newTotal, credits),
+        
+        // Subscription data (CRITICAL - was missing before)
+        subscription_plan: plan,
+        product_id: productId,
+        is_pro_version: true,
+        price: price,
+        
+        // Timestamps
         purchase_time: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       })
       .eq('id', user.id);
 
@@ -399,7 +428,13 @@ class ConsumableIAPService {
       throw updateError;
     }
 
-    console.log('[ConsumableIAP] ✅ Credits granted directly:', newTotal);
+    console.log('[ConsumableIAP] ✅ Credits and subscription data granted:', {
+      newTotal,
+      plan,
+      productId,
+      price,
+      isPro: true
+    });
   }
 
   /**
