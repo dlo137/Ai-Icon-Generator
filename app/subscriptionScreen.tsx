@@ -46,9 +46,59 @@ export default function SubscriptionScreen() {
     connectionStatus: { isConnected: false, hasListener: false },
     lastPurchaseResult: null,
     lastError: null,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    iapLogs: [] // Store IAP service logs
   });
   const [showDebug, setShowDebug] = useState(false); // Debug panel hidden for production
+
+  // Intercept console.log to capture IAP logs
+  useEffect(() => {
+    const originalLog = console.log;
+    const originalError = console.error;
+    const originalWarn = console.warn;
+
+    const captureLog = (level: string, ...args: any[]) => {
+      const message = args.map(arg => 
+        typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+      ).join(' ');
+
+      // Only capture ConsumableIAP logs
+      if (message.includes('[ConsumableIAP]')) {
+        setDebugInfo((prev: any) => ({
+          ...prev,
+          iapLogs: [
+            ...prev.iapLogs.slice(-50), // Keep last 50 logs
+            {
+              level,
+              message,
+              timestamp: new Date().toISOString()
+            }
+          ]
+        }));
+      }
+    };
+
+    console.log = (...args: any[]) => {
+      captureLog('log', ...args);
+      originalLog.apply(console, args);
+    };
+
+    console.error = (...args: any[]) => {
+      captureLog('error', ...args);
+      originalError.apply(console, args);
+    };
+
+    console.warn = (...args: any[]) => {
+      captureLog('warn', ...args);
+      originalWarn.apply(console, args);
+    };
+
+    return () => {
+      console.log = originalLog;
+      console.error = originalError;
+      console.warn = originalWarn;
+    };
+  }, []);
 
   // Check if running in Expo Go
   const isExpoGo = Constants.executionEnvironment === 'storeClient';
@@ -1149,6 +1199,18 @@ export default function SubscriptionScreen() {
                       Error: {debugInfo.testPurchaseResult.error}
                     </Text>
                   )}
+                  
+                  {/* CRITICAL ISSUE INDICATOR */}
+                  {debugInfo.testPurchaseResult.success && !debugInfo.iapCallbackFired && (
+                    <View style={{ marginTop: 8, backgroundColor: 'rgba(239, 68, 68, 0.2)', padding: 8, borderRadius: 4 }}>
+                      <Text style={[styles.debugText, { color: '#ef4444', fontWeight: 'bold' }]}>
+                        🚨 CRITICAL: Purchase succeeded but callback NOT fired!
+                      </Text>
+                      <Text style={[styles.debugTextSmall, { color: '#fbbf24' }]}>
+                        This means the purchase listener in ConsumableIAPService is NOT calling the credit grant callback.
+                      </Text>
+                    </View>
+                  )}
                 </View>
               )}
 
@@ -1186,11 +1248,14 @@ export default function SubscriptionScreen() {
                       }));
 
                       if (result.success) {
-                        Alert.alert(
-                          '✅ Purchase Complete',
-                          `Purchase successful! Check:\n1. Profile data above\n2. IAP Callback Monitor\n3. Your Supabase dashboard\n\nStay on this screen to verify updates.`,
-                          [{ text: 'OK' }]
-                        );
+                        // Wait 2 seconds for callback to fire
+                        setTimeout(() => {
+                          Alert.alert(
+                            '✅ Purchase Complete',
+                            `Purchase successful! Check:\n1. Profile data above\n2. IAP Callback Monitor\n3. Your Supabase dashboard\n\nStay on this screen to verify updates.`,
+                            [{ text: 'OK' }]
+                          );
+                        }, 2000);
                       } else if (result.error && !result.error.includes('cancelled')) {
                         Alert.alert('Purchase Failed', result.error);
                       }
@@ -1218,6 +1283,169 @@ export default function SubscriptionScreen() {
 
               <Text style={[styles.debugTextSmall, { color: '#fbbf24', marginTop: 8, fontStyle: 'italic' }]}>
                 ⚠️ This uses REAL IAP and will charge your test account. Results stay on this screen for debugging.
+              </Text>
+            </View>
+
+            {/* CRITICAL DIAGNOSTIC */}
+            <View style={styles.debugSection}>
+              <Text style={styles.debugSectionTitle}>🔥 ROOT CAUSE IDENTIFIED</Text>
+              
+              <View style={{ backgroundColor: 'rgba(239, 68, 68, 0.2)', padding: 10, borderRadius: 6 }}>
+                <Text style={[styles.debugText, { color: '#ef4444', fontWeight: 'bold' }]}>
+                  THE ISSUE:
+                </Text>
+                <Text style={styles.debugTextSmall}>
+                  • Purchase succeeds ✅
+                </Text>
+                <Text style={styles.debugTextSmall}>
+                  • Supabase NOT updated ❌
+                </Text>
+                <Text style={styles.debugTextSmall}>
+                  • Callback NOT fired ❌
+                </Text>
+              </View>
+
+              <View style={{ backgroundColor: 'rgba(251, 191, 36, 0.1)', padding: 10, borderRadius: 6, marginTop: 10 }}>
+                <Text style={[styles.debugText, { color: '#fbbf24', fontWeight: 'bold' }]}>
+                  WHAT THIS MEANS:
+                </Text>
+                <Text style={styles.debugTextSmall}>
+                  The purchase listener in ConsumableIAPService is either:
+                </Text>
+                <Text style={styles.debugTextSmall}>
+                  1. Not registered properly
+                </Text>
+                <Text style={styles.debugTextSmall}>
+                  2. Not detecting the purchase
+                </Text>
+                <Text style={styles.debugTextSmall}>
+                  3. Not calling the callback function
+                </Text>
+                <Text style={styles.debugTextSmall}>
+                  4. Failing silently before reaching callback
+                </Text>
+              </View>
+
+              <View style={{ backgroundColor: 'rgba(34, 197, 94, 0.1)', padding: 10, borderRadius: 6, marginTop: 10 }}>
+                <Text style={[styles.debugText, { color: '#22c55e', fontWeight: 'bold' }]}>
+                  WHERE TO FIX:
+                </Text>
+                <Text style={styles.debugTextSmall}>
+                  📁 services/ConsumableIAPService.ts
+                </Text>
+                <Text style={styles.debugTextSmall}>
+                  
+                </Text>
+                <Text style={styles.debugTextSmall}>
+                  Check these methods:
+                </Text>
+                <Text style={styles.debugTextSmall}>
+                  • initialize() - Is listener registered?
+                </Text>
+                <Text style={styles.debugTextSmall}>
+                  • handlePurchaseUpdate() - Is it being called?
+                </Text>
+                <Text style={styles.debugTextSmall}>
+                  • Does it call grantCreditsDirectly()?
+                </Text>
+                <Text style={styles.debugTextSmall}>
+                  • Does grantCreditsDirectly() update Supabase?
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                style={[styles.debugButton, { backgroundColor: '#dc2626', marginTop: 10 }]}
+                onPress={() => {
+                  Alert.alert(
+                    '🔧 Fix Required',
+                    'The purchase listener needs to:\n\n' +
+                    '1. Detect purchase completion\n' +
+                    '2. Extract product ID and credits\n' +
+                    '3. Call the callback OR grantCreditsDirectly()\n' +
+                    '4. Update Supabase with ALL fields:\n' +
+                    '   • credits_current\n' +
+                    '   • credits_max\n' +
+                    '   • subscription_plan\n' +
+                    '   • product_id\n' +
+                    '   • is_pro_version\n' +
+                    '   • price\n' +
+                    '   • purchase_time\n' +
+                    '   • updated_at\n\n' +
+                    'Add console.logs in ConsumableIAPService to trace the flow!',
+                    [{ text: 'Got It' }]
+                  );
+                }}
+              >
+                <Text style={styles.debugButtonText}>📋 Show Fix Instructions</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Real-time IAP Service Logs */}
+            <View style={styles.debugSection}>
+              <Text style={styles.debugSectionTitle}>📋 IAP Service Logs (Real-time)</Text>
+              <Text style={styles.debugTextSmall}>
+                Live logs from ConsumableIAPService
+              </Text>
+
+              <View style={{ maxHeight: 300, marginTop: 8 }}>
+                <ScrollView style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)', padding: 8, borderRadius: 4 }}>
+                  {debugInfo.iapLogs.length === 0 ? (
+                    <Text style={[styles.debugTextSmall, { color: '#6b7280' }]}>
+                      No logs yet. Make a purchase to see activity...
+                    </Text>
+                  ) : (
+                    debugInfo.iapLogs.map((log: any, index: number) => (
+                      <View key={index} style={{ marginBottom: 4 }}>
+                        <Text style={[
+                          styles.debugTextSmall,
+                          {
+                            color: log.level === 'error' ? '#ef4444' : 
+                                   log.level === 'warn' ? '#fbbf24' : '#10b981',
+                            fontFamily: 'monospace'
+                          }
+                        ]}>
+                          [{new Date(log.timestamp).toLocaleTimeString()}] {log.message}
+                        </Text>
+                      </View>
+                    ))
+                  )}
+                </ScrollView>
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                <TouchableOpacity
+                  style={[styles.debugButton, { backgroundColor: '#6366f1', flex: 1, marginTop: 0 }]}
+                  onPress={() => {
+                    setDebugInfo((prev: any) => ({
+                      ...prev,
+                      iapLogs: [],
+                      timestamp: new Date().toISOString(),
+                    }));
+                  }}
+                >
+                  <Text style={styles.debugButtonText}>🧹 Clear Logs</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.debugButton, { backgroundColor: '#8b5cf6', flex: 1, marginTop: 0 }]}
+                  onPress={() => {
+                    const logText = debugInfo.iapLogs
+                      .map((log: any) => `[${new Date(log.timestamp).toLocaleTimeString()}] ${log.message}`)
+                      .join('\n');
+                    
+                    Alert.alert(
+                      'IAP Logs',
+                      logText || 'No logs captured yet',
+                      [{ text: 'Close' }]
+                    );
+                  }}
+                >
+                  <Text style={styles.debugButtonText}>📄 View All</Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={[styles.debugTextSmall, { color: '#fbbf24', marginTop: 8, fontStyle: 'italic' }]}>
+                💡 Look for: "PURCHASE UPDATE RECEIVED", "Calling credit grant callback", "Transaction finished"
               </Text>
             </View>
 

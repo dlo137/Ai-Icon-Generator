@@ -82,12 +82,14 @@ class ConsumableIAPService {
    * CRITICAL: Must be called on app startup BEFORE any purchase attempts.
    * Sets up transaction listener to handle interrupted purchases.
    * 
+   * FIX: Made callback OPTIONAL - will use direct grant if not provided
+   * 
    * @param creditPacks - Array of credit pack configurations
-   * @param onCreditsGranted - Callback to grant credits (must be idempotent)
+   * @param onCreditsGranted - Optional callback to grant credits (must be idempotent)
    */
   async initialize(
     creditPacks: CreditPackConfig[],
-    onCreditsGranted: CreditGrantCallback
+    onCreditsGranted?: CreditGrantCallback  // ← OPTIONAL now
   ): Promise<void> {
     if (this.isInitialized) {
       console.log('[ConsumableIAP] Already initialized');
@@ -102,8 +104,13 @@ class ConsumableIAPService {
         this.productConfig.set(pack.productId, pack.credits);
       });
 
-      // Store callback for granting credits
-      this.creditGrantCallback = onCreditsGranted;
+      // Store callback for granting credits (now optional)
+      if (onCreditsGranted) {
+        this.creditGrantCallback = onCreditsGranted;
+        console.log('[ConsumableIAP] ✅ Callback registered');
+      } else {
+        console.log('[ConsumableIAP] ⚠️ No callback provided - will use direct grant');
+      }
 
       // Initialize connection to App Store / Google Play
       await RNIap.initConnection();
@@ -164,18 +171,37 @@ class ConsumableIAPService {
    * @param purchase - Purchase object from react-native-iap
    */
   private async handlePurchaseUpdate(purchase: any): Promise<void> {
-    const transactionId = purchase.transactionId;
-    const productId = purchase.productId;
+    // FIX: Extract transactionId from multiple possible fields
+    const transactionId = purchase.transactionId || 
+                         purchase.transactionIdentifier || 
+                         purchase.purchaseToken;
+    
+    // FIX: Extract productId from multiple possible fields
+    const productId = purchase.productId || 
+                     purchase.productIds?.[0] || 
+                     purchase.sku ||
+                     (purchase as any).id;
 
     console.log('[ConsumableIAP] ========================================');
     console.log('[ConsumableIAP] PURCHASE UPDATE RECEIVED');
     console.log('[ConsumableIAP] Transaction ID:', transactionId);
-    console.log('[ConsumableIAP] Product ID:', productId);
+    console.log('[ConsumableIAP] Product ID (extracted):', productId);
     console.log('[ConsumableIAP] Full purchase object:', JSON.stringify(purchase, null, 2));
     console.log('[ConsumableIAP] ========================================');
 
     if (!transactionId) {
       console.error('[ConsumableIAP] ❌ Purchase missing transactionId:', purchase);
+      return;
+    }
+
+    if (!productId) {
+      console.error('[ConsumableIAP] ❌ Could not extract productId from purchase object');
+      // Still finish to prevent re-delivery
+      try {
+        await RNIap.finishTransaction({ purchase, isConsumable: true });
+      } catch (e) {
+        console.error('[ConsumableIAP] Failed to finish transaction:', e);
+      }
       return;
     }
 
@@ -202,15 +228,24 @@ class ConsumableIAPService {
       console.log('[ConsumableIAP] ✅ Product found:', productId, '=', credits, 'credits');
       console.log('[ConsumableIAP] 🎯 Granting', credits, 'credits for transaction:', transactionId);
 
-      // GRANT CREDITS (via callback to app)
-      // This should be idempotent - safe to call multiple times
+      // FIX: Try callback first, but ALWAYS fallback to direct grant on error
+      let creditGrantSuccess = false;
+      
       if (this.creditGrantCallback) {
-        console.log('[ConsumableIAP] 📞 Calling credit grant callback...');
-        await this.creditGrantCallback(credits, transactionId, productId);
-        console.log('[ConsumableIAP] ✅ Credit grant callback completed');
-      } else {
-        // Fallback if callback not set
-        console.log('[ConsumableIAP] ⚠️ No callback set, using direct grant...');
+        try {
+          console.log('[ConsumableIAP] 📞 Calling credit grant callback...');
+          await this.creditGrantCallback(credits, transactionId, productId);
+          console.log('[ConsumableIAP] ✅ Credit grant callback completed');
+          creditGrantSuccess = true;
+        } catch (callbackError) {
+          console.error('[ConsumableIAP] ❌ Callback failed:', callbackError);
+          console.log('[ConsumableIAP] 🔄 Falling back to direct grant...');
+        }
+      }
+      
+      // If no callback or callback failed, use direct grant
+      if (!creditGrantSuccess) {
+        console.log('[ConsumableIAP] 💾 Using direct Supabase grant...');
         await this.grantCreditsDirectly(credits, transactionId, productId);
         console.log('[ConsumableIAP] ✅ Direct credit grant completed');
       }
@@ -361,32 +396,46 @@ class ConsumableIAPService {
    * 
    * This is called if no callback was provided during initialization.
    * Grants credits to Supabase profile with FULL subscription data.
+   * Automatically determines plan and price based on productId.
    * 
    * @param credits - Number of credits to grant
    * @param transactionId - Transaction ID for tracking
-   * @param productId - Product ID that was purchased
+   * @param productId - Product ID that was purchased (starter.25/value.75/pro.200)
    */
   private async grantCreditsDirectly(credits: number, transactionId: string, productId: string): Promise<void> {
-    console.log('[ConsumableIAP] Granting credits directly to Supabase:', credits);
+    console.log('[ConsumableIAP] ========================================');
+    console.log('[ConsumableIAP] 💾 DIRECT SUPABASE UPDATE STARTING');
+    console.log('[ConsumableIAP] Credits to grant:', credits);
     console.log('[ConsumableIAP] Product ID:', productId);
+    console.log('[ConsumableIAP] Transaction ID:', transactionId);
 
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError || !user) {
-      console.error('[ConsumableIAP] No authenticated user');
+      console.error('[ConsumableIAP] ❌ No authenticated user');
       throw new Error('User not authenticated');
     }
 
+    console.log('[ConsumableIAP] ✅ User authenticated:', user.id);
+
     // Get current credits
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('credits_current')
       .eq('id', user.id)
       .single();
 
+    if (profileError) {
+      console.error('[ConsumableIAP] ❌ Failed to fetch profile:', profileError);
+      throw profileError;
+    }
+
     const currentCredits = profile?.credits_current || 0;
     const newTotal = currentCredits + credits;
 
-    // Map productId to plan and price
+    console.log('[ConsumableIAP] Current credits:', currentCredits);
+    console.log('[ConsumableIAP] New total will be:', newTotal);
+
+    // Map productId to plan and price based on user selection
     let plan = 'starter';
     let price = 1.99;
     
@@ -401,17 +450,27 @@ class ConsumableIAPService {
       price = 14.99;
     }
 
-    console.log('[ConsumableIAP] Mapped to plan:', plan, 'price:', price);
+    console.log('[ConsumableIAP] 🎯 Mapped product to plan:', plan);
+    console.log('[ConsumableIAP] 💰 Price:', `$${price}`);
+    console.log('[ConsumableIAP] 📦 Will update ALL fields:');
+    console.log('[ConsumableIAP]   • credits_current:', newTotal);
+    console.log('[ConsumableIAP]   • credits_max:', Math.max(newTotal, credits));
+    console.log('[ConsumableIAP]   • subscription_plan:', plan);
+    console.log('[ConsumableIAP]   • product_id:', productId);
+    console.log('[ConsumableIAP]   • is_pro_version: true');
+    console.log('[ConsumableIAP]   • price:', price);
+    console.log('[ConsumableIAP]   • purchase_time: (now)');
+    console.log('[ConsumableIAP]   • updated_at: (now)');
 
     // Update profile with COMPLETE subscription data
-    const { error: updateError } = await supabase
+    const { data: updateData, error: updateError } = await supabase
       .from('profiles')
       .update({
         // Credits
         credits_current: newTotal,
         credits_max: Math.max(newTotal, credits),
         
-        // Subscription data (CRITICAL - was missing before)
+        // Subscription data based on user selection
         subscription_plan: plan,
         product_id: productId,
         is_pro_version: true,
@@ -421,20 +480,45 @@ class ConsumableIAPService {
         purchase_time: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
-      .eq('id', user.id);
+      .eq('id', user.id)
+      .select();
 
     if (updateError) {
-      console.error('[ConsumableIAP] Failed to update profile:', updateError);
+      console.error('[ConsumableIAP] ❌❌❌ SUPABASE UPDATE FAILED');
+      console.error('[ConsumableIAP] Error:', updateError);
+      console.error('[ConsumableIAP] Error code:', updateError.code);
+      console.error('[ConsumableIAP] Error message:', updateError.message);
+      console.error('[ConsumableIAP] Error details:', updateError.details);
       throw updateError;
     }
 
-    console.log('[ConsumableIAP] ✅ Credits and subscription data granted:', {
-      newTotal,
-      plan,
-      productId,
-      price,
-      isPro: true
-    });
+    console.log('[ConsumableIAP] ✅✅✅ SUPABASE UPDATE SUCCESSFUL');
+    console.log('[ConsumableIAP] Updated data:', JSON.stringify(updateData, null, 2));
+    console.log('[ConsumableIAP] Summary:');
+    console.log('[ConsumableIAP]   User:', user.email);
+    console.log('[ConsumableIAP]   Plan:', plan, '(from user selection)');
+    console.log('[ConsumableIAP]   Credits:', `${currentCredits} → ${newTotal}`);
+    console.log('[ConsumableIAP]   Product:', productId);
+    console.log('[ConsumableIAP]   Price: $' + price);
+    console.log('[ConsumableIAP]   Pro Status: ✅ Activated');
+    console.log('[ConsumableIAP] ========================================');
+  }
+
+  /**
+   * NEW: Get service status for debugging
+   */
+  getStatus(): any {
+    return {
+      isInitialized: this.isInitialized,
+      hasListener: !!this.purchaseUpdateSubscription,
+      hasErrorListener: !!this.purchaseErrorSubscription,
+      hasCallback: !!this.creditGrantCallback,
+      productCount: this.productConfig.size,
+      products: Array.from(this.productConfig.entries()).map(([id, credits]) => ({
+        productId: id,
+        credits,
+      })),
+    };
   }
 
   /**
