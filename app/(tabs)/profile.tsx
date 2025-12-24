@@ -871,20 +871,20 @@ export default function ProfileScreen() {
       // 2. Determine how many credits to ADD based on product
       let creditsToAdd = 0;
       let subscriptionPlan = 'pro';
-      let price = '$14.99';
+      let price = 14.99;  // Numeric, not string with $
       
       if (productId === 'starter.25') {
         creditsToAdd = 15;
         subscriptionPlan = 'starter';
-        price = '$1.99';
+        price = 1.99;
       } else if (productId === 'value.75') {
         creditsToAdd = 45;
         subscriptionPlan = 'value';
-        price = '$5.99';
+        price = 5.99;
       } else if (productId === 'pro.200') {
         creditsToAdd = 120;
         subscriptionPlan = 'pro';
-        price = '$14.99';
+        price = 14.99;
       }
 
       console.log('[PROFILE] 💰 Credits to add:', creditsToAdd);
@@ -928,7 +928,11 @@ export default function ProfileScreen() {
       await refreshCredits();
 
       // Show success message
-      Alert.alert('Success!', `Your credits have been added. You now have ${newTotal} icons!\n\nYou may need to restart the app to see proper credits.`);
+      Alert.alert(
+        '🎉 Purchase Successful!',
+        `${creditsToAdd} credits have been added to your account!\n\nYou now have ${newTotal} credits.\n\nPlease restart the app to see your updated counter.`,
+        [{ text: 'OK' }]
+      );
       
       console.log('[PROFILE] ✅ Purchase flow complete');
     } catch (e: any) {

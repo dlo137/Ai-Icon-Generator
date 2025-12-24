@@ -145,19 +145,40 @@ export default function SubscriptionScreen() {
     }
 
     try {
+      console.log('[SubscriptionScreen] 🛒 Starting purchase for:', planId);
       const result = await purchase(planId);
       
       if (result.success) {
+        console.log('[SubscriptionScreen] ✅ Purchase completed successfully');
+        
+        // Wait for Supabase to be updated by ConsumableIAPService
+        // The service's purchase listener will handle the update automatically
+        console.log('[SubscriptionScreen] ⏳ Waiting for credits to be granted...');
+        
+        // Give the service time to process the purchase and update Supabase
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        
         // Mark onboarding as complete
         await AsyncStorage.setItem('hasCompletedOnboarding', 'true');
         
-        // Navigate to generate screen
-        router.replace('/(tabs)/generate');
+        // Show success message
+        Alert.alert(
+          '🎉 Purchase Complete!',
+          `Your ${selectedPlan} pack has been activated.\n\nYou may need to restart the app for all changes to take effect.`,
+          [
+            {
+              text: 'Continue',
+              onPress: () => {
+                router.replace('/(tabs)/generate');
+              }
+            }
+          ]
+        );
       } else if (result.error && !result.error.includes('cancelled')) {
         Alert.alert('Purchase Failed', result.error || 'Please try again.');
       }
     } catch (error: any) {
-      console.error('Purchase failed:', error);
+      console.error('[SubscriptionScreen] ❌ Purchase failed:', error);
       if (error.message && !error.message.includes('cancelled')) {
         Alert.alert('Purchase Failed', error.message || 'Please try again.');
       }
