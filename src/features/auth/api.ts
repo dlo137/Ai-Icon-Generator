@@ -203,7 +203,7 @@ export async function signInWithApple() {
     // Check if this is a new user and update profile
     if (data.user) {
       // Check if profile exists
-      const { data: existingProfile } = await supabase
+      const { data: existingProfile, error: profileFetchError } = await supabase
         .from('profiles')
         .select('id, onboarding_completed, email, name')
         .eq('id', data.user.id)
@@ -252,10 +252,25 @@ export async function signInWithApple() {
 
       // Update profile if there are updates
       if (Object.keys(updates).length > 0) {
-        await supabase
+        const { data: updateResult, error: updateError } = await supabase
           .from('profiles')
           .update(updates)
-          .eq('id', data.user.id);
+          .eq('id', data.user.id)
+          .select();
+
+        if (updateError) {
+          // Check if profile exists, if not create it
+          if (updateError.code === 'PGRST116') {
+            await supabase
+              .from('profiles')
+              .insert({
+                id: data.user.id,
+                ...updates,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              });
+          }
+        }
       }
     }
 

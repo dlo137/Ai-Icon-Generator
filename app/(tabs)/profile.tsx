@@ -786,6 +786,9 @@ export default function ProfileScreen() {
       console.log('[EXPO GO] Refreshing user data...');
       await loadUserData();
       console.log('[EXPO GO] User data refreshed successfully');
+      
+      // Force refresh credits context (this updates the header)
+      await refreshCredits();
 
       // Show success message
       Alert.alert(
@@ -892,8 +895,6 @@ export default function ProfileScreen() {
 
       // 4. Calculate NEW total
       const newTotal = creditsBeforePurchase + creditsToAdd;
-      console.log('[PROFILE] 🧮 New total:', creditsBeforePurchase, '+', creditsToAdd, '=', newTotal);
-
       // 5. Update Supabase with ADDED credits
       const { data: updateData, error: updateError } = await supabase
         .from('profiles')
@@ -910,11 +911,8 @@ export default function ProfileScreen() {
         .select();
 
       if (updateError) {
-        console.error('[PROFILE] ❌ Failed to update Supabase:', updateError);
         throw updateError;
       }
-
-      console.log('[PROFILE] ✅ Supabase updated:', updateData);
 
       // 6. Update global state IMMEDIATELY (triggers header re-render)
       setCreditsImmediate(newTotal, Math.max(newTotal, creditsToAdd));
@@ -925,6 +923,9 @@ export default function ProfileScreen() {
 
       // 7. Refresh local profile data
       await loadUserData();
+      
+      // 8. Force refresh credits context (this updates the header)
+      await refreshCredits();
 
       // Show success message
       Alert.alert('Success!', `Your credits have been added. You now have ${newTotal} icons!\n\nYou may need to restart the app to see proper credits.`);
