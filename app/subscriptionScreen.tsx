@@ -151,6 +151,27 @@ export default function SubscriptionScreen() {
       if (result.success) {
         console.log('[SubscriptionScreen] ✅ Purchase completed successfully');
         
+        // Scenario 3: Treat paying guests as full users
+        // When a guest purchases a plan, they become a full user (not a guest anymore)
+        const { data: { user } } = await supabase.auth.getUser();
+        
+        if (user) {
+          // Update user's profile to mark them as a pro user (paying customer)
+          // ConsumableIAPService already handles credit granting, we just ensure is_pro_version is set
+          const { error: updateError } = await supabase
+            .from('profiles')
+            .update({
+              is_pro_version: true, // Mark as paying customer
+            })
+            .eq('id', user.id);
+
+          if (updateError) {
+            console.error('[SubscriptionScreen] Error updating pro status:', updateError);
+          } else {
+            console.log('[SubscriptionScreen] ✅ Paying guest upgraded to full user');
+          }
+        }
+        
         // Wait for Supabase to be updated by ConsumableIAPService
         // The service's purchase listener will handle the update automatically
         console.log('[SubscriptionScreen] ⏳ Waiting for credits to be granted...');
@@ -193,10 +214,32 @@ export default function SubscriptionScreen() {
       const { data: { user } } = await supabase.auth.getUser();
 
       if (user) {
-        // Update Supabase profile with 3 free credits
+        // Check if user has metadata (email, name) - indicates they signed up with Google/Apple/manual login
+        const hasUserMetadata = user.email || user.user_metadata?.full_name || user.user_metadata?.email;
+        
+        let profileName: string;
+        let profileEmail: string | null;
+
+        if (hasUserMetadata) {
+          // Scenario 1: User signed up with Google/Apple/manual login, then chose guest mode
+          // Keep their email and name from signup
+          profileName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Guest User';
+          profileEmail = user.email || null;
+          console.log('[Guest Mode] User has auth metadata, preserving:', { name: profileName, email: profileEmail });
+        } else {
+          // Scenario 2: Pure guest (never signed up) - generate sequential username
+          const { generateSequentialUsername } = require('../src/utils/guestSession');
+          profileName = await generateSequentialUsername();
+          profileEmail = null;
+          console.log('[Guest Mode] Pure guest, generated username:', profileName);
+        }
+
+        // Update Supabase profile with 3 free credits (that don't reset)
         const { error: updateError } = await supabase
           .from('profiles')
           .update({
+            name: profileName,
+            email: profileEmail,
             credits_current: 3,
             credits_max: 3,
             is_pro_version: false,

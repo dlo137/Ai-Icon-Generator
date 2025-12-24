@@ -155,3 +155,48 @@ export async function upgradeGuestToAccount(userId: string): Promise<void> {
     throw error;
   }
 }
+
+/**
+ * Generate a sequential unique username (user1, user2, etc.)
+ * Queries the database to find the next available number
+ */
+export async function generateSequentialUsername(): Promise<string> {
+  try {
+    // Query all profiles with names like 'user%' to find the highest number
+    const { data: profiles, error } = await supabase
+      .from('profiles')
+      .select('name')
+      .like('name', 'user%');
+
+    if (error) {
+      console.error('[Guest Session] Error querying profiles for username:', error);
+      // Fallback to timestamp-based username if query fails
+      return `user${Date.now()}`;
+    }
+
+    // Extract numbers from usernames like 'user1', 'user2', etc.
+    let maxNumber = 0;
+    if (profiles && profiles.length > 0) {
+      profiles.forEach(profile => {
+        if (profile.name) {
+          const match = profile.name.match(/^user(\d+)$/);
+          if (match) {
+            const num = parseInt(match[1], 10);
+            if (num > maxNumber) {
+              maxNumber = num;
+            }
+          }
+        }
+      });
+    }
+
+    // Return next sequential number
+    const nextNumber = maxNumber + 1;
+    console.log('[Guest Session] Generated sequential username: user' + nextNumber);
+    return `user${nextNumber}`;
+  } catch (error) {
+    console.error('[Guest Session] Error generating sequential username:', error);
+    // Fallback to timestamp-based username
+    return `user${Date.now()}`;
+  }
+}
