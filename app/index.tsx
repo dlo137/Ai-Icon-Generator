@@ -57,7 +57,7 @@ export default function WelcomeScreen() {
       try {
         const AsyncStorage = require('@react-native-async-storage/async-storage').default;
         const allKeys = await AsyncStorage.getAllKeys();
-        const relevantKeys = allKeys.filter(key => 
+        const relevantKeys = allKeys.filter((key: string) => 
           key.includes('onboarding') || 
           key.includes('auth') || 
           key.includes('session') ||
@@ -95,85 +95,35 @@ export default function WelcomeScreen() {
 
   const checkSession = async () => {
     try {
-      // Starting authentication check
       const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      console.log('[INDEX] Checking app state...');
       
-      // PRIORITY 1: Check onboarding completion FIRST - this overrides everything
-      let hasCompletedOnboarding = null;
-      try {
-        hasCompletedOnboarding = await AsyncStorage.getItem('hasCompletedOnboarding');
-        // Check onboarding completion status
-      } catch (asyncError) {
-        // Error reading onboarding status
+      // Step 1: Ensure device_id exists
+      let deviceId = await AsyncStorage.getItem('device_id');
+      if (!deviceId) {
+        deviceId = `device_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        await AsyncStorage.setItem('device_id', deviceId);
+        console.log('[INDEX] Created device_id:', deviceId);
       }
-
-      // If user has completed onboarding, go to main app immediately (skip session check)
-      if (hasCompletedOnboarding === 'true') {
-        // ONBOARDING COMPLETED - Going directly to main app
-        router.replace('/(tabs)/generate');
-        return;
-      }
-
-      // PRIORITY 2: Only check session if onboarding is not completed
-      // Onboarding not completed - checking session
       
-      let sessionInfo = null;
-      try {
-        // Wrap session check in timeout to prevent hanging
-        const sessionPromise = checkUserSession();
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Session check timeout')), 8000)
-        );
-        
-        sessionInfo = await Promise.race([sessionPromise, timeoutPromise]);
-        // Session check completed
-      } catch (sessionError) {
-        // Session check failed or timed out
-        
-        // If session check fails but onboarding was completed, still go to main app
-        if (hasCompletedOnboarding === 'true') {
-          // Session failed but onboarding completed - going to main app
-          router.replace('/(tabs)/generate');
-          return;
-        }
-        
-        // Otherwise continue to onboarding
-        // Session failed and no onboarding - showing onboarding
+      // Step 2: Check if onboarding is completed
+      const hasCompletedOnboarding = await AsyncStorage.getItem('hasCompletedOnboarding');
+      console.log('[INDEX] hasCompletedOnboarding:', hasCompletedOnboarding);
+      
+      // Step 3: If onboarding not completed, show it
+      if (hasCompletedOnboarding !== 'true') {
+        console.log('[INDEX] Onboarding not completed - showing onboarding');
         setIsCheckingAuth(false);
         return;
       }
-
-      // If user is authenticated, they can skip onboarding
-      if (sessionInfo && sessionInfo.isAuthenticated) {
-        // User authenticated - going to main app
-        router.replace('/(tabs)/generate');
-        return;
-      }
-
-      // Default: Show onboarding for new users
-      // New user - showing onboarding flow
-      setIsCheckingAuth(false);
+      
+      // Step 4: Onboarding completed - go to home
+      console.log('[INDEX] Onboarding completed - going to home');
+      router.replace('/(tabs)/generate');
       
     } catch (error: any) {
-      // Critical error in checkSession
-      
-      // EMERGENCY FALLBACK: Always check onboarding completion
-      try {
-        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-        const hasCompletedOnboarding = await AsyncStorage.getItem('hasCompletedOnboarding');
-        // Emergency fallback - check onboarding status
-        
-        if (hasCompletedOnboarding === 'true') {
-          // EMERGENCY: Onboarding completed - redirecting to main app
-          router.replace('/(tabs)/generate');
-          return;
-        }
-      } catch (fallbackError) {
-        // Emergency fallback failed
-      }
-      
-      // Final fallback: show onboarding
-      // All checks failed - showing onboarding
+      console.error('[INDEX] Error in checkSession:', error);
+      // On error, show onboarding
       setIsCheckingAuth(false);
     }
   };

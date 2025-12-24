@@ -82,89 +82,89 @@ export function useConsumableIAP(creditPacks: CreditPackConfig[]): UseConsumable
           console.log('[useConsumableIAP] Credits granted via callback:', credits, transactionId);
           
           try {
-            // Check if user is authenticated
+            // Update Supabase profile
+            console.log('[useConsumableIAP] Updating Supabase profile...');
+            
             const { data: { session } } = await supabase.auth.getSession();
             
-            if (session?.user) {
-              // Grant credits to authenticated user
-              const { data: profile } = await supabase
-                .from('profiles')
-                .select('credits_current, product_id')
-                .eq('id', session.user.id)
-                .single();
-
-              const currentCredits = profile?.credits_current || 0;
-              const newTotal = currentCredits + credits;
-
-              // Get the product ID and price from credit packs
-              const creditPack = creditPacks.find(p => p.credits === credits);
-              const productId = creditPack?.productId || profile?.product_id;
-              
-              // Determine subscription plan and price based on product ID
-              let subscriptionPlan = 'pro';
-              let price = '$14.99';
-              
-              if (productId === 'starter.25') {
-                subscriptionPlan = 'starter';
-                price = '$1.99';
-              } else if (productId === 'value.75') {
-                subscriptionPlan = 'value';
-                price = '$5.99';
-              } else if (productId === 'pro.200') {
-                subscriptionPlan = 'pro';
-                price = '$14.99';
-              }
-
-              // Update profile with new credits
-              console.log('[useConsumableIAP] Updating Supabase profile...');
-              
-              const { data: updateData, error: updateError } = await supabase
-                .from('profiles')
-                .update({
-                  credits_current: newTotal,
-                  credits_max: Math.max(newTotal, credits),
-                  purchase_time: new Date().toISOString(),
-                  product_id: productId,
-                  subscription_plan: subscriptionPlan,
-                  price: price,
-                  is_pro_version: true,
-                })
-                .eq('id', session.user.id)
-                .select();
-
-              if (updateError) {
-                console.error('[useConsumableIAP] Failed to update profile:', updateError);
-                throw updateError;
-              }
-
-              console.log('[useConsumableIAP] ✅ Supabase profile updated:', updateData);
-              console.log('[useConsumableIAP] ✅ Credits granted to user:', newTotal);
-              
-              // Wait a moment to ensure Supabase processes the update
-              await new Promise(resolve => setTimeout(resolve, 500));
-            } else {
-              // Grant credits to guest (local storage)
-              const creditsData = await AsyncStorage.getItem('guest_credits');
-              const current = creditsData ? JSON.parse(creditsData).current : 0;
-              
-              const newTotal = current + credits;
-
-              await AsyncStorage.setItem('guest_credits', JSON.stringify({
-                current: newTotal,
-                max: Math.max(newTotal, credits),
-                lastResetDate: new Date().toISOString(),
-                plan: 'guest'
-              }));
-
-              console.log('[useConsumableIAP] ✅ Credits granted to guest:', newTotal);
+            if (!session?.user) {
+              console.error('[useConsumableIAP] No authenticated user found');
+              throw new Error('User not authenticated');
             }
+            
+            // Get current credits
+            const { data: profile } = await supabase
+              .from('profiles')
+              .select('credits_current, product_id')
+              .eq('id', session.user.id)
+              .single();
+
+            const currentCredits = profile?.credits_current || 0;
+            const newTotal = currentCredits + credits;
+
+            // Get the product ID and price from credit packs
+            const creditPack = creditPacks.find(p => p.credits === credits);
+            const productId = creditPack?.productId || profile?.product_id;
+            
+            // Determine subscription plan and price based on product ID
+            let subscriptionPlan = 'pro';
+            let price = '$14.99';
+            
+            if (productId === 'starter.25') {
+              subscriptionPlan = 'starter';
+              price = '$1.99';
+            } else if (productId === 'value.75') {
+              subscriptionPlan = 'value';
+              price = '$5.99';
+            } else if (productId === 'pro.200') {
+              subscriptionPlan = 'pro';
+              price = '$14.99';
+            }
+
+            // Update profile with new credits
+            const { data: updateData, error: updateError } = await supabase
+              .from('profiles')
+              .update({
+                credits_current: newTotal,
+                credits_max: Math.max(newTotal, credits),
+                purchase_time: new Date().toISOString(),
+                product_id: productId,
+                subscription_plan: subscriptionPlan,
+                price: price,
+                is_pro_version: true,
+              })
+              .eq('id', session.user.id)
+              .select();
+
+            if (updateError) {
+              console.error('[useConsumableIAP] Failed to update profile:', updateError);
+              throw updateError;
+            }
+
+            console.log('[useConsumableIAP] ✅ Supabase profile updated:', updateData);
+            console.log('[useConsumableIAP] ✅ Credits granted to user:', newTotal);
+            
+            // Wait a moment to ensure Supabase processes the update
+            await new Promise(resolve => setTimeout(resolve, 500));
           } catch (error) {
             console.error('[useConsumableIAP] Error granting credits:', error);
             throw error;
           }
           
-          // Refresh credits in UI
+          // Refresh credits in UI multiple times to ensure it updates
+          console.log('[useConsumableIAP] Refreshing credits in UI...');
           await refreshCredits();
+          
+          // Refresh again after a delay to catch any async updates
+          setTimeout(async () => {
+            console.log('[useConsumableIAP] Second refresh...');
+            await refreshCredits();
+          }, 500);
+          
+          setTimeout(async () => {
+            console.log('[useConsumableIAP] Third refresh...');
+            await refreshCredits();
+          }, 1000);
           
           // Clear purchasing state
           setPurchasingProduct(null);

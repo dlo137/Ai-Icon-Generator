@@ -167,8 +167,15 @@ class ConsumableIAPService {
     const transactionId = purchase.transactionId;
     const productId = purchase.productId;
 
+    console.log('[ConsumableIAP] ========================================');
+    console.log('[ConsumableIAP] PURCHASE UPDATE RECEIVED');
+    console.log('[ConsumableIAP] Transaction ID:', transactionId);
+    console.log('[ConsumableIAP] Product ID:', productId);
+    console.log('[ConsumableIAP] Full purchase object:', JSON.stringify(purchase, null, 2));
+    console.log('[ConsumableIAP] ========================================');
+
     if (!transactionId) {
-      console.error('[ConsumableIAP] Purchase missing transactionId:', purchase);
+      console.error('[ConsumableIAP] ❌ Purchase missing transactionId:', purchase);
       return;
     }
 
@@ -176,7 +183,7 @@ class ConsumableIAPService {
       // IDEMPOTENCY CHECK: Have we already granted credits for this transaction?
       const alreadyProcessed = await PurchaseLedger.isProcessed(transactionId);
       if (alreadyProcessed) {
-        console.log('[ConsumableIAP] Transaction already processed:', transactionId);
+        console.log('[ConsumableIAP] ⚠️ Transaction already processed:', transactionId);
         // Still finish the transaction in case it wasn't finished before
         await RNIap.finishTransaction({ purchase, isConsumable: true });
         return;
@@ -185,34 +192,50 @@ class ConsumableIAPService {
       // Get credit amount for this product
       const credits = this.productConfig.get(productId);
       if (!credits) {
-        console.error('[ConsumableIAP] Unknown product:', productId);
+        console.error('[ConsumableIAP] ❌ Unknown product:', productId);
+        console.error('[ConsumableIAP] Available products:', Array.from(this.productConfig.keys()));
         // Finish transaction to prevent it from re-appearing
         await RNIap.finishTransaction({ purchase, isConsumable: true });
         return;
       }
 
-      console.log('[ConsumableIAP] Granting', credits, 'credits for transaction:', transactionId);
+      console.log('[ConsumableIAP] ✅ Product found:', productId, '=', credits, 'credits');
+      console.log('[ConsumableIAP] 🎯 Granting', credits, 'credits for transaction:', transactionId);
 
       // GRANT CREDITS (via callback to app)
       // This should be idempotent - safe to call multiple times
       if (this.creditGrantCallback) {
+        console.log('[ConsumableIAP] 📞 Calling credit grant callback...');
         await this.creditGrantCallback(credits, transactionId);
+        console.log('[ConsumableIAP] ✅ Credit grant callback completed');
       } else {
         // Fallback if callback not set
+        console.log('[ConsumableIAP] ⚠️ No callback set, using direct grant...');
         await this.grantCreditsDirectly(credits, transactionId);
+        console.log('[ConsumableIAP] ✅ Direct credit grant completed');
       }
 
       // RECORD IN LEDGER (prevents double-grant on app restart)
+      console.log('[ConsumableIAP] 📝 Recording in purchase ledger...');
       await PurchaseLedger.recordPurchase(transactionId, productId, credits);
+      console.log('[ConsumableIAP] ✅ Recorded in ledger');
 
       // FINISH TRANSACTION (tells StoreKit we're done)
       // CRITICAL: Only finish AFTER credits are granted
       // If we finish before granting, and app crashes, credits are lost forever
+      console.log('[ConsumableIAP] 🏁 Finishing transaction...');
       await RNIap.finishTransaction({ purchase, isConsumable: true });
+      console.log('[ConsumableIAP] ✅ Transaction finished');
 
-      console.log('[ConsumableIAP] Transaction completed:', transactionId);
+      console.log('[ConsumableIAP] ========================================');
+      console.log('[ConsumableIAP] ✅✅✅ TRANSACTION COMPLETED SUCCESSFULLY');
+      console.log('[ConsumableIAP] ========================================');
     } catch (error) {
-      console.error('[ConsumableIAP] Failed to process purchase:', error);
+      console.error('[ConsumableIAP] ========================================');
+      console.error('[ConsumableIAP] ❌❌❌ FAILED TO PROCESS PURCHASE');
+      console.error('[ConsumableIAP] Error:', error);
+      console.error('[ConsumableIAP] Stack:', (error as Error).stack);
+      console.error('[ConsumableIAP] ========================================');
       // DO NOT finish transaction on error - it will retry later
       throw error;
     }
@@ -337,32 +360,17 @@ class ConsumableIAPService {
    * Fallback method to grant credits directly.
    * 
    * This is called if no callback was provided during initialization.
-   * Grants credits to both Supabase (if logged in) and local storage (if guest).
+   * Grants credits to Supabase profile.
    * 
    * @param credits - Number of credits to grant
    * @param transactionId - Transaction ID for tracking
    */
   private async grantCreditsDirectly(credits: number, transactionId: string): Promise<void> {
-    console.log('[ConsumableIAP] Granting credits directly:', credits);
+    console.log('[ConsumableIAP] Granting credits directly to Supabase:', credits);
 
-    // Check if guest mode
-    const isGuest = await isGuestSession();
-
-    if (isGuest) {
-      // Grant to guest session (local storage)
-      await this.grantCreditsToGuest(credits);
-    } else {
-      // Grant to authenticated user (Supabase)
-      await this.grantCreditsToUser(credits, transactionId);
-    }
-  }
-
-  /**
-   * Grant credits to authenticated user via Supabase.
-   */
-  private async grantCreditsToUser(credits: number, transactionId: string): Promise<void> {
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError || !user) {
+      console.error('[ConsumableIAP] No authenticated user');
       throw new Error('User not authenticated');
     }
 
@@ -376,40 +384,22 @@ class ConsumableIAPService {
     const currentCredits = profile?.credits_current || 0;
     const newTotal = currentCredits + credits;
 
-    // Add credits atomically
+    // Update profile
     const { error: updateError } = await supabase
       .from('profiles')
       .update({
         credits_current: newTotal,
-        credits_max: Math.max(newTotal, credits), // Max is at least the new total
+        credits_max: Math.max(newTotal, credits),
         purchase_time: new Date().toISOString(),
       })
       .eq('id', user.id);
 
     if (updateError) {
+      console.error('[ConsumableIAP] Failed to update profile:', updateError);
       throw updateError;
     }
 
-    console.log('[ConsumableIAP] Credits granted to user:', newTotal);
-  }
-
-  /**
-   * Grant credits to guest user via local storage.
-   */
-  private async grantCreditsToGuest(credits: number): Promise<void> {
-    const creditsData = await AsyncStorage.getItem('guest_credits');
-    const current = creditsData ? JSON.parse(creditsData).current : 0;
-    
-    const newTotal = current + credits;
-
-    await AsyncStorage.setItem('guest_credits', JSON.stringify({
-      current: newTotal,
-      max: Math.max(newTotal, credits),
-      lastResetDate: new Date().toISOString(),
-      plan: 'guest'
-    }));
-
-    console.log('[ConsumableIAP] Credits granted to guest:', newTotal);
+    console.log('[ConsumableIAP] ✅ Credits granted directly:', newTotal);
   }
 
   /**

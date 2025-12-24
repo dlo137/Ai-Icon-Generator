@@ -33,55 +33,45 @@ export function CreditsProvider({ children }: { children: React.ReactNode }) {
 
   const refreshCredits = useCallback(async () => {
     try {
-      console.log('[CreditsContext] Refreshing credits...');
-      const isGuest = await isGuestSession();
+      console.log('[CreditsContext] Refreshing credits from Supabase...');
+      
+      // Get credits from Supabase
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      
+      if (userError || !user) {
+        console.log('[CreditsContext] No authenticated user, setting credits to 0');
+        setCredits(0);
+        setMaxCredits(0);
+        return;
+      }
 
-      if (isGuest) {
-        // Get credits from local storage for guest
-        console.log('[CreditsContext] Loading guest credits');
-        const creditsData = await AsyncStorage.getItem('guest_credits');
-        if (creditsData) {
-          const parsed = JSON.parse(creditsData);
-          setCredits(parsed.current || 0);
-          setMaxCredits(parsed.max || 0);
-          console.log('[CreditsContext] Guest credits loaded:', parsed.current, '/', parsed.max);
-        } else {
-          setCredits(0);
-          setMaxCredits(0);
-          console.log('[CreditsContext] No guest credits found');
-        }
+      console.log('[CreditsContext] Fetching profile for user:', user.id);
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('credits_current, credits_max')
+        .eq('id', user.id)
+        .single();
+
+      if (profileError) {
+        console.error('[CreditsContext] Profile fetch error:', profileError);
+        setCredits(0);
+        setMaxCredits(0);
+        return;
+      }
+
+      if (profile) {
+        setCredits(profile.credits_current || 0);
+        setMaxCredits(profile.credits_max || 0);
+        console.log('[CreditsContext] ✅ Credits loaded from Supabase:', profile.credits_current, '/', profile.credits_max);
       } else {
-        // Get credits from Supabase for authenticated user
-        console.log('[CreditsContext] Loading authenticated user credits');
-        const { data: { user }, error: userError } = await supabase.auth.getUser();
-        if (userError || !user) {
-          console.error('[CreditsContext] Failed to get user:', userError);
-          setCredits(0);
-          setMaxCredits(0);
-          return;
-        }
-
-        console.log('[CreditsContext] Fetching profile for user:', user.id);
-        const { data: profile, error: profileError } = await supabase
-          .from('profiles')
-          .select('credits_current, credits_max')
-          .eq('id', user.id)
-          .single();
-
-        if (profileError) {
-          console.error('[CreditsContext] Profile fetch error:', profileError);
-        }
-
-        if (profile) {
-          setCredits(profile.credits_current || 0);
-          setMaxCredits(profile.credits_max || 0);
-          console.log('[CreditsContext] ✅ Credits loaded from Supabase:', profile.credits_current, '/', profile.credits_max);
-        } else {
-          console.warn('[CreditsContext] No profile found');
-        }
+        console.warn('[CreditsContext] No profile found');
+        setCredits(0);
+        setMaxCredits(0);
       }
     } catch (error) {
       console.error('[CreditsContext] Error refreshing credits:', error);
+      setCredits(0);
+      setMaxCredits(0);
     }
   }, []);
 

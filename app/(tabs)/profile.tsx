@@ -5,6 +5,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { useCallback } from 'react';
 import { getCurrentUser, getMyProfile, updateMyProfile, signOut, deleteAccount } from '../../src/features/auth/api';
 import { useModal } from '../../src/contexts/ModalContext';
+import { useCredits } from '../../src/contexts/CreditsContext';
 import { supabase } from '../../lib/supabase';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getSubscriptionInfo, SubscriptionInfo, getCredits, CreditsInfo } from '../../src/utils/subscriptionStorage';
@@ -46,6 +47,7 @@ export default function ProfileScreen() {
     isBillingManagementModalVisible,
     setIsBillingManagementModalVisible,
   } = useModal();
+  const { refreshCredits } = useCredits();
   const [selectedPlan, setSelectedPlan] = useState('pro');
   const [contactForm, setContactForm] = useState({
     name: '',
@@ -509,38 +511,40 @@ export default function ProfileScreen() {
   };
 
   const handleSignOut = async () => {
+    console.log('[PROFILE] Sign out initiated');
+    
     try {
-      // Show success alert immediately
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      
+      // Only clear onboarding flag
+      await AsyncStorage.removeItem('hasCompletedOnboarding');
+      console.log('[PROFILE] Cleared onboarding flag');
+      
+      // Show success alert and redirect
       Alert.alert(
         'Signed Out Successfully',
-        'You have been signed out of your account.',
+        'You will see the onboarding screen on next launch.',
         [
           {
             text: 'OK',
             onPress: () => {
+              console.log('[PROFILE] Redirecting to onboarding...');
               router.replace('/');
             }
           }
         ]
       );
-
-      // Do the actual sign out in the background (don't block UX)
-      try {
-        await signOut();
-      } catch (backgroundError) {
-        // Don't show error to user - they're already being signed out
-      }
-
     } catch (error) {
-      // Even if there's an error, still show success and redirect
+      console.error('[PROFILE] Sign out error:', error);
+      
       Alert.alert(
         'Signed Out',
-        'You have been signed out.',
+        'You will see the onboarding screen on next launch.',
         [
           {
             text: 'OK',
             onPress: () => {
-              console.log('[PROFILE] Redirecting to onboarding after error...');
+              console.log('[PROFILE] Redirecting to onboarding...');
               router.replace('/');
             }
           }
@@ -571,14 +575,6 @@ export default function ProfileScreen() {
           text: 'Delete Account',
           style: 'destructive',
           onPress: async () => {
-            // Always reset deletion flag and redirect, no matter what happens
-            const forceRedirect = () => {
-              isDeletingRef.current = false;
-              router.dismissAll();
-              router.replace('/');
-              console.log('[DELETE] Force redirect executed');
-            };
-
             try {
               // FIX #1: Hard isDeletingAccount guard
               if (isDeletingRef.current) {
@@ -588,15 +584,23 @@ export default function ProfileScreen() {
               
               isDeletingRef.current = true;
 
-              console.log('[DELETE] Starting authenticated user deletion...');
+              console.log('[DELETE] Starting account deletion...');
 
-              // Delete the account (also signs out)
+              // Step 1: Delete from Supabase (profile, storage, and sign out)
               await deleteAccount();
-              console.log('[DELETE] Account deletion completed');
+              console.log('[DELETE] Supabase account deleted');
 
-              // Clear onboarding flag so they see onboarding again
-              await AsyncStorage.removeItem('hasCompletedOnboarding');
-              console.log('[DELETE] Cleared onboarding flag');
+              // Step 2: Clear all local data
+              await AsyncStorage.multiRemove([
+                'device_id',
+                'hasCompletedOnboarding',
+                'guest_credits',
+                'credits',
+                'lastAuthCheck',
+                'hasValidSession',
+                'lastValidAuth'
+              ]);
+              console.log('[DELETE] Cleared all local data');
               
               // Wait to ensure all operations complete
               await new Promise(resolve => setTimeout(resolve, 500));
@@ -606,31 +610,57 @@ export default function ProfileScreen() {
               // Redirect to onboarding screen
               isDeletingRef.current = false;
               
-              // Use pushAsync for better production compatibility
-              try {
-                router.replace('/');
-              } catch (navError) {
-                console.error('[DELETE] Router replace failed:', navError);
-                // Fallback: try push
-                router.push('/');
-              }
-
-              // Show confirmation after redirect
-              setTimeout(() => {
-                Alert.alert(
-                  'Account Deleted',
-                  'Your account has been permanently deleted.'
-                );
-              }, 1000);
+              // Show success alert first
+              Alert.alert(
+                'Account Deleted Successfully',
+                'All your data has been removed. The app will restart.',
+                [
+                  {
+                    text: 'OK',
+                    onPress: () => {
+                      // Redirect after alert
+                      try {
+                        router.replace('/');
+                      } catch (navError) {
+                        console.error('[DELETE] Router replace failed:', navError);
+                        router.push('/');
+                      }
+                    }
+                  }
+                ]
+              );
             } catch (error: any) {
               // ALWAYS redirect no matter what error occurs
               console.error('[DELETE] Delete account error:', error);
 
+              // Clear storage even on error
+              try {
+                await AsyncStorage.multiRemove([
+                  'device_id',
+                  'hasCompletedOnboarding',
+                  'guest_credits',
+                  'credits',
+                  'lastAuthCheck',
+                  'hasValidSession',
+                  'lastValidAuth'
+                ]);
+              } catch (clearError) {
+                console.error('[DELETE] Failed to clear storage:', clearError);
+              }
+
               // Force redirect even on error
               isDeletingRef.current = false;
-              router.replace('/');
-
-              Alert.alert('Error', `Failed to delete account: ${error?.message || 'Unknown error'}. You have been signed out.`);
+              
+              Alert.alert(
+                'Data Cleared', 
+                'All local data has been removed. The app will restart.',
+                [
+                  {
+                    text: 'OK',
+                    onPress: () => router.replace('/')
+                  }
+                ]
+              );
             }
           }
         }
@@ -829,6 +859,16 @@ export default function ProfileScreen() {
       console.log('[PROFILE] Purchase successful, refreshing user data...');
       await loadUserData();
       console.log('[PROFILE] User data refreshed successfully');
+      
+      // Force refresh credits in the header
+      console.log('[PROFILE] Refreshing credits in header...');
+      await refreshCredits();
+      
+      // Refresh again after a delay to ensure UI updates
+      setTimeout(async () => {
+        await refreshCredits();
+        console.log('[PROFILE] Credits refreshed after delay');
+      }, 500);
 
       // Show success message
       Alert.alert('Success!', 'Your credits have been added. Thank you for your purchase!');

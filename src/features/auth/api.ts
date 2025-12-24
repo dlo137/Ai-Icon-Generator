@@ -41,9 +41,13 @@ export async function signInEmail(email: string, password: string) {
 }
 
 export async function signOut() {
-  // Clear onboarding flag so next sign-in shows onboarding
+  console.log('[AUTH] Signing out user...');
+  
+  // Only clear onboarding flag - keep device_id and credits
   await AsyncStorage.removeItem('hasCompletedOnboarding');
-  await supabase.auth.signOut();
+  
+  console.log('[AUTH] Cleared onboarding flag - user will see onboarding on next launch');
+  console.log('[AUTH] Sign out completed');
 }
 
 // Profile management functions
