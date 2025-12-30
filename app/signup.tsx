@@ -298,13 +298,13 @@ export default function SignUpScreen() {
             </Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
+          {/* <TouchableOpacity
             style={styles.guestButton}
             onPress={handleGuestMode}
             disabled={isLoading}
           >
             <Text style={styles.guestButtonText}>Continue as Guest</Text>
-          </TouchableOpacity>
+          </TouchableOpacity> */}
 
           <View style={styles.loginContainer}>
             <Text style={styles.loginText}>Already have an account? </Text>

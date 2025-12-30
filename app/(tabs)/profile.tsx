@@ -20,7 +20,7 @@ export default function ProfileScreen() {
   
   const storeUrl = Platform.OS === 'android'
     ? 'https://play.google.com/store/apps/details?id=com.watsonsweb.icongenerator'
-    : 'https://apps.apple.com/app/id6755940269?action=write-review';
+    : 'https://apps.apple.com/us/app/ai-icon-generator/id6756280351';
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -89,11 +89,11 @@ export default function ProfileScreen() {
     { id: 'about', title: 'About', subtitle: 'App information' },
     { id: 'billing', title: 'Purchase History', subtitle: 'View your last purchase' },
     // Only show rate button on iOS
-    // ...(Platform.OS === 'ios' ? [{
-    //   id: 'rate',
-    //   title: 'Rate the App',
-    //   subtitle: 'Share your feedback on the App Store'
-    // }] : []),
+    ...(Platform.OS === 'ios' ? [{
+      id: 'rate',
+      title: 'Rate the App',
+      subtitle: 'Share your feedback on the App Store'
+    }] : []),
   ];
 
   const subscriptionPlans = [

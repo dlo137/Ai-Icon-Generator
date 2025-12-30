@@ -26,12 +26,15 @@ config.resolver.nodeModulesPaths = [
   path.resolve(__dirname, 'node_modules'),
 ];
 
-// Enable package exports support for semver and other packages
-config.resolver.unstable_enablePackageExports = true;
+// Disable package exports as it can cause dependency resolution issues
+// config.resolver.unstable_enablePackageExports = true;
 
 // Exclude problematic packages
 config.resolver.resolverMainFields = ['react-native', 'browser', 'main'];
 config.resolver.platforms = ['native', 'ios', 'android', 'web'];
+
+// Add source extensions to help with resolution
+config.resolver.sourceExts = [...config.resolver.sourceExts, 'cjs'];
 
 // Configure transformer to handle Node.js modules
 config.transformer = {

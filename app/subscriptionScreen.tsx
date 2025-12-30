@@ -537,12 +537,12 @@ export default function SubscriptionScreen() {
         </TouchableOpacity>
 
         {/* Continue as Guest Option */}
-        <TouchableOpacity
+        {/* <TouchableOpacity
           onPress={handleContinueAsGuest}
           style={styles.skipContainer}
         >
           <Text style={styles.skipText}>Continue as Guest</Text>
-        </TouchableOpacity>
+        </TouchableOpacity> */}
       </View>
 
       {/* Debug Panel - Commented out for production */}
