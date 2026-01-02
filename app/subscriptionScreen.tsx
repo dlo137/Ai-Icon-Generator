@@ -7,12 +7,14 @@ import Constants from 'expo-constants';
 import { supabase } from '../lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useConsumableIAP } from '../hooks/useConsumableIAP';
+import { usePostHog } from 'posthog-react-native';
 
 // Consumable IAP credit packs - must match App Store Connect / Google Play Console
 const CREDIT_PACKS = [
   { productId: 'starter.25', credits: 15, displayName: 'Starter Pack' },
   { productId: 'value.75', credits: 45, displayName: 'Value Pack' },
   { productId: 'pro.200', credits: 120, displayName: 'Pro Pack' },
+  { productId: 'discounted.pro', credits: 120, displayName: 'Pro Pack (Discounted)' },
 ];
 
 // Quick lookup for product IDs by plan name
@@ -20,6 +22,7 @@ const PRODUCT_IDS = {
   starter: 'starter.25',
   value: 'value.75',
   pro: 'pro.200',
+  'discounted-pro': 'discounted.pro',
 };
 
 export default function SubscriptionScreen() {
@@ -29,6 +32,8 @@ export default function SubscriptionScreen() {
   const routerRef = useRef(router);
   const [selectedPlan, setSelectedPlan] = useState<'starter' | 'value' | 'pro'>('pro');
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const posthog = usePostHog();
+  const [showDiscountModal, setShowDiscountModal] = useState(false);
   
   // Initialize consumable IAP service
   const { products, isLoading, purchasingProduct, error: iapError, purchase } = useConsumableIAP(CREDIT_PACKS);
@@ -103,6 +108,14 @@ export default function SubscriptionScreen() {
   // Check if running in Expo Go
   const isExpoGo = Constants.executionEnvironment === 'storeClient';
 
+  // Track subscription screen view
+  useEffect(() => {
+    console.log('[PostHog] Tracking: subscription_screen_viewed');
+    posthog?.capture('subscription_screen_viewed', {
+      selected_plan: selectedPlan,
+    });
+  }, [posthog]);
+
   useEffect(() => {
     Animated.timing(fadeAnim, {
       toValue: 1,
@@ -150,6 +163,14 @@ export default function SubscriptionScreen() {
       
       if (result.success) {
         console.log('[SubscriptionScreen] ✅ Purchase completed successfully');
+        
+        // Track successful purchase
+        console.log('[PostHog] Tracking: subscription_purchased');
+        posthog?.capture('subscription_purchased', {
+          plan: selectedPlan,
+          product_id: planId,
+          credits: product.credits,
+        });
         
         // Scenario 3: Treat paying guests as full users
         // When a guest purchases a plan, they become a full user (not a guest anymore)
@@ -359,6 +380,15 @@ export default function SubscriptionScreen() {
       // Mark onboarding as complete
       await AsyncStorage.setItem('hasCompletedOnboarding', 'true');
 
+      // Track successful purchase (Expo Go simulation)
+      console.log('[PostHog] Tracking: subscription_purchased (Expo Go simulation)');
+      posthog?.capture('subscription_purchased', {
+        plan: selectedPlan,
+        product_id: productId,
+        credits: credits,
+        is_simulation: true,
+      });
+
       // Show success message
       Alert.alert(
         'Success (Expo Go Simulation)',
@@ -389,14 +419,246 @@ export default function SubscriptionScreen() {
   };
 
   const handleClose = async () => {
-    // Mark onboarding as complete when user closes without purchasing
+    // Show discount modal instead of closing immediately
+    setShowDiscountModal(true);
+    
+    // Track discount modal view
+    console.log('[PostHog] Tracking: discount_modal_viewed');
+    posthog?.capture('discount_modal_viewed', {
+      original_price: 14.99,
+      discounted_price: 9.99,
+      discount_percentage: 33,
+    });
+  };
+
+  const handleDeclineDiscount = async () => {
+    setShowDiscountModal(false);
+    
+    // Clear onboarding flag to restart from beginning
     try {
-      await AsyncStorage.setItem('hasCompletedOnboarding', 'true');
+      await AsyncStorage.removeItem('hasCompletedOnboarding');
     } catch (err) {
-      console.error('Failed to mark onboarding as complete:', err);
+      console.error('Failed to clear onboarding flag:', err);
     }
 
-    router.replace('/(tabs)/generate');
+    router.replace('/');
+  };
+
+  const handleAcceptDiscount = async () => {
+    setShowDiscountModal(false);
+    
+    // Trigger purchase for discounted pro pack
+    if (purchaseInProgressRef.current) {
+      console.log('[SubscriptionScreen] Purchase already in progress');
+      return;
+    }
+    purchaseInProgressRef.current = true;
+
+    // If running in Expo Go, simulate the purchase with discounted price
+    if (isExpoGo) {
+      await simulateDiscountedPurchaseInExpoGo();
+      purchaseInProgressRef.current = false;
+      return;
+    }
+
+    const isIAPAvailable = iapStatus === 'ready' && products.length > 0;
+    if (!isIAPAvailable) {
+      Alert.alert('Purchases unavailable', 'In-app purchases are not available on this device.');
+      purchaseInProgressRef.current = false;
+      return;
+    }
+
+    const planId = PRODUCT_IDS['discounted-pro'];
+    const product = products.find(p => p.productId === planId);
+    if (!product) {
+      Alert.alert('Offer unavailable', 'This special offer is not available right now. Please try again later.');
+      purchaseInProgressRef.current = false;
+      return;
+    }
+
+    try {
+      console.log('[SubscriptionScreen] 🛒 Starting discounted purchase for:', planId);
+      const result = await purchase(planId);
+      
+      if (result.success) {
+        console.log('[SubscriptionScreen] ✅ Discounted purchase completed successfully');
+        
+        // Track successful discount purchase
+        console.log('[PostHog] Tracking: discount_purchase_success');
+        posthog?.capture('discount_purchase_success', {
+          plan: 'discounted-pro',
+          product_id: planId,
+          credits: 120,
+          original_price: 14.99,
+          discounted_price: 9.99,
+          discount_percentage: 33,
+        });
+        
+        // Also track as regular subscription purchase for overall metrics
+        posthog?.capture('subscription_purchased', {
+          plan: 'discounted-pro',
+          product_id: planId,
+          credits: 120,
+          original_price: 14.99,
+          discounted_price: 9.99,
+          discount_percentage: 33,
+        });
+        
+        const { data: { user } } = await supabase.auth.getUser();
+        
+        if (user) {
+          const { error: updateError } = await supabase
+            .from('profiles')
+            .update({
+              is_pro_version: true,
+            })
+            .eq('id', user.id);
+
+          if (updateError) {
+            console.error('[SubscriptionScreen] Error updating pro status:', updateError);
+          } else {
+            console.log('[SubscriptionScreen] ✅ User upgraded with discount');
+          }
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        await AsyncStorage.setItem('hasCompletedOnboarding', 'true');
+        
+        Alert.alert(
+          '🎉 Special Offer Accepted!',
+          'Your discounted Pro pack has been activated.',
+          [
+            {
+              text: 'Continue',
+              onPress: () => {
+                router.replace('/(tabs)/generate');
+              }
+            }
+          ]
+        );
+      } else if (result.error && !result.error.includes('cancelled')) {
+        Alert.alert('Purchase Failed', result.error || 'Please try again.');
+      }
+    } catch (error: any) {
+      console.error('[SubscriptionScreen] ❌ Discounted purchase failed:', error);
+      if (error.message && !error.message.includes('cancelled')) {
+        Alert.alert('Purchase Failed', error.message || 'Please try again.');
+      }
+    } finally {
+      purchaseInProgressRef.current = false;
+    }
+  };
+
+  const simulateDiscountedPurchaseInExpoGo = async () => {
+    try {
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
+        throw new Error('User not authenticated');
+      }
+
+      const now = new Date();
+      const credits = 120;
+      const productId = PRODUCT_IDS['discounted-pro'];
+      const price = 9.99;
+
+      const { data: existingProfile } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      let currentCredits = 0;
+      if (existingProfile) {
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('credits_current')
+          .eq('id', user.id)
+          .single();
+
+        currentCredits = profileData?.credits_current || 0;
+      } else {
+        const { error: insertError } = await supabase
+          .from('profiles')
+          .insert({
+            id: user.id,
+            email: user.email,
+            name: user.user_metadata?.full_name || user.email?.split('@')[0],
+            credits_current: 0,
+          });
+
+        if (insertError) {
+          throw insertError;
+        }
+      }
+
+      const newCreditTotal = currentCredits + credits;
+      const newMax = newCreditTotal > credits ? newCreditTotal : credits;
+
+      const updateData = {
+        credits_current: newCreditTotal,
+        credits_max: newMax,
+        product_id: productId,
+        subscription_plan: 'discounted-pro',
+        subscription_start_date: now.toISOString(),
+        subscription_end_date: null,
+        subscription_id: `sim_discount_${Date.now()}_${user.id}`,
+        email: user.email,
+        purchase_time: now.toISOString(),
+        price: price,
+        is_pro_version: true,
+        updated_at: now.toISOString(),
+      };
+
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update(updateData)
+        .eq('id', user.id)
+        .select();
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      await AsyncStorage.setItem('hasCompletedOnboarding', 'true');
+
+      // Track successful discount purchase (Expo Go simulation)
+      console.log('[PostHog] Tracking: discount_purchase_success (Expo Go simulation)');
+      posthog?.capture('discount_purchase_success', {
+        plan: 'discounted-pro',
+        product_id: productId,
+        credits: credits,
+        original_price: 14.99,
+        discounted_price: 9.99,
+        discount_percentage: 33,
+        is_simulation: true,
+      });
+      
+      // Also track as regular subscription purchase for overall metrics
+      posthog?.capture('subscription_purchased', {
+        plan: 'discounted-pro',
+        product_id: productId,
+        credits: credits,
+        original_price: 14.99,
+        discounted_price: 9.99,
+        discount_percentage: 33,
+        is_simulation: true,
+      });
+
+      Alert.alert(
+        'Success (Expo Go Simulation)',
+        `${credits} credits added with 33% discount! New total: ${newCreditTotal} credits\n\nNote: This is a simulated purchase for testing in Expo Go.`,
+        [
+          {
+            text: 'Continue',
+            onPress: () => {
+              router.replace('/(tabs)/generate');
+            }
+          }
+        ]
+      );
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to simulate purchase');
+    }
   };
 
   return (
@@ -1578,6 +1840,66 @@ export default function SubscriptionScreen() {
           <Text style={styles.showDebugText}>🔧</Text>
         </TouchableOpacity>
       )}
+
+      {/* Discount Modal */}
+      {showDiscountModal && (
+        <View style={styles.discountModalOverlay}>
+          <View style={styles.discountModalContainer}>
+            <LinearGradient
+              colors={['#1e3a8a', '#1e40af', '#2563eb']}
+              style={styles.discountModalGradient}
+            >
+
+              {/* Modal Content */}
+              <View style={styles.discountModalContent}>
+                <Text style={styles.discountModalTitle}>Wait! Special Offer 🎉</Text>
+                <Text style={styles.discountModalSubtitle}>
+                  Don't miss out on this exclusive discount!
+                </Text>
+
+                {/* Price Comparison */}
+                <View style={styles.priceComparisonContainer}>
+                  <View style={styles.originalPriceContainer}>
+                    <Text style={styles.originalPriceLabel}>Regular Price</Text>
+                    <Text style={styles.originalPrice}>$14.99</Text>
+                  </View>
+                  <Text style={styles.arrowText}>→</Text>
+                  <View style={styles.discountedPriceContainer}>
+                    <Text style={styles.discountedPriceLabel}>Today Only</Text>
+                    <Text style={styles.discountedPrice}>$9.99</Text>
+                  </View>
+                </View>
+
+                {/* Benefits */}
+                <View style={styles.benefitsContainer}>
+                  <Text style={styles.benefitItem}>✓ 120 AI Icons</Text>
+                  <Text style={styles.benefitItem}>✓ Better Value</Text>
+                  <Text style={styles.benefitItem}>✓ Priority Support</Text>
+                </View>
+
+                {/* Buttons */}
+                <TouchableOpacity
+                  style={styles.acceptDiscountButton}
+                  onPress={handleAcceptDiscount}
+                >
+                  <Text style={styles.acceptDiscountButtonText}>
+                    Claim 33% Discount ($9.99)
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.declineDiscountButton}
+                  onPress={handleDeclineDiscount}
+                >
+                  <Text style={styles.declineDiscountButtonText}>
+                    No thanks, take me back
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </LinearGradient>
+          </View>
+        </View>
+      )}
     </LinearGradient>
   );
 }
@@ -1941,5 +2263,151 @@ const styles = StyleSheet.create({
   },
   showDebugText: {
     fontSize: 24,
+  },
+  // Discount Modal Styles
+  discountModalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  discountModalContainer: {
+    width: '85%',
+    maxWidth: 400,
+    borderRadius: 24,
+    overflow: 'hidden',
+    shadowColor: '#1e40af',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 20,
+    elevation: 15,
+  },
+  discountModalGradient: {
+    padding: 24,
+  },
+  discountBadge: {
+    position: 'absolute',
+    top: 0,
+    alignSelf: 'center',
+    backgroundColor: '#ef4444',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    shadowColor: '#ef4444',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.6,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  discountBadgeText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: 'bold',
+    letterSpacing: 1,
+  },
+  discountModalContent: {
+    alignItems: 'center',
+    paddingTop: 40,
+  },
+  discountModalTitle: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  discountModalSubtitle: {
+    fontSize: 14,
+    color: '#dbeafe',
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  priceComparisonContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+    gap: 12,
+  },
+  originalPriceContainer: {
+    alignItems: 'center',
+  },
+  originalPriceLabel: {
+    fontSize: 11,
+    color: '#dbeafe',
+    opacity: 0.8,
+    marginBottom: 4,
+  },
+  originalPrice: {
+    fontSize: 20,
+    color: '#dbeafe',
+    textDecorationLine: 'line-through',
+    opacity: 0.6,
+  },
+  arrowText: {
+    fontSize: 24,
+    color: '#ffffff',
+    fontWeight: 'bold',
+  },
+  discountedPriceContainer: {
+    alignItems: 'center',
+  },
+  discountedPriceLabel: {
+    fontSize: 11,
+    color: '#fbbf24',
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  discountedPrice: {
+    fontSize: 32,
+    color: '#fbbf24',
+    fontWeight: 'bold',
+  },
+  benefitsContainer: {
+    width: '100%',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
+  },
+  benefitItem: {
+    fontSize: 14,
+    color: '#ffffff',
+    marginBottom: 8,
+    fontWeight: '500',
+  },
+  acceptDiscountButton: {
+    width: '100%',
+    backgroundColor: '#fbbf24',
+    paddingVertical: 16,
+    borderRadius: 16,
+    marginBottom: 12,
+    shadowColor: '#fbbf24',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  acceptDiscountButtonText: {
+    color: '#000000',
+    fontSize: 16,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    letterSpacing: 0.5,
+  },
+  declineDiscountButton: {
+    width: '100%',
+    paddingVertical: 12,
+  },
+  declineDiscountButtonText: {
+    color: '#dbeafe',
+    fontSize: 13,
+    textAlign: 'center',
+    opacity: 0.7,
   },
 });

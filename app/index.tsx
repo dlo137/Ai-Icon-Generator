@@ -8,6 +8,7 @@ import ConfettiCannon from 'react-native-confetti-cannon';
 import * as Haptics from 'expo-haptics';
 import TimeChart from '../src/components/TimeChart';
 import { checkUserSession, setupAuthListener } from '../src/utils/sessionManager';
+import { usePostHog } from 'posthog-react-native';
 
 export default function WelcomeScreen() {
   const router = useRouter();
@@ -23,6 +24,7 @@ export default function WelcomeScreen() {
   const confettiFarLeftRef = useRef(null);
   const confettiDelayed1 = useRef(null);
   const confettiDelayed2 = useRef(null);
+  const posthog = usePostHog();
 
   // Check for existing session on mount
   useEffect(() => {
@@ -92,6 +94,26 @@ export default function WelcomeScreen() {
       triggerHaptics();
     }
   }, [step, isCheckingAuth]);
+
+  // Track onboarding screen views
+  useEffect(() => {
+    if (!isCheckingAuth && step > 0) {
+      const eventNames: { [key: number]: string } = {
+        1: 'onboarding_welcome_screen_viewed',
+        2: 'onboarding_features_screen_viewed',
+        3: 'onboarding_struggles_screen_viewed',
+        5: 'onboarding_time_savings_screen_viewed',
+      };
+      
+      const eventName = eventNames[step];
+      if (eventName) {
+        console.log('[PostHog] Tracking:', eventName);
+        posthog?.capture(eventName, {
+          step_number: step,
+        });
+      }
+    }
+  }, [step, isCheckingAuth, posthog]);
 
   const checkSession = async () => {
     try {

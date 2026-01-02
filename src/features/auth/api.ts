@@ -4,6 +4,7 @@ import * as Crypto from 'expo-crypto';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as WebBrowser from 'expo-web-browser';
+import posthog from 'posthog-react-native';
 
 export async function signUpEmail(email: string, password: string, fullName?: string) {
   const { data, error } = await supabase.auth.signUp({
@@ -28,6 +29,22 @@ export async function signUpEmail(email: string, password: string, fullName?: st
 
     if (profileError) {
       // Profile update error
+    }
+    
+    // Track signup event
+    try {
+      console.log('[PostHog] Capturing user_signed_up event for:', data.user.id);
+      posthog.capture('user_signed_up', {
+        method: 'email',
+      });
+      
+      console.log('[PostHog] Identifying user:', data.user.id, data.user.email);
+      posthog.identify(data.user.id, {
+        email: data.user.email,
+        name: fullName,
+      });
+    } catch (posthogError) {
+      console.log('[PostHog] Tracking failed (non-critical):', posthogError);
     }
   }
 
@@ -270,6 +287,22 @@ export async function signInWithApple() {
           }
         }
       }
+      
+      // Track signup/login event
+      try {
+        console.log('[PostHog] Capturing user_signed_up event for:', data.user.id);
+        posthog.capture('user_signed_up', {
+          method: 'apple',
+        });
+        
+        console.log('[PostHog] Identifying user:', data.user.id, data.user.email);
+        posthog.identify(data.user.id, {
+          email: data.user.email,
+          name: updates.name || existingProfile?.name,
+        });
+      } catch (posthogError) {
+        console.log('[PostHog] Tracking failed (non-critical):', posthogError);
+      }
     }
 
     return data;
@@ -404,6 +437,22 @@ export async function signInWithGoogle() {
         // Update profile with Google user data
         if (sessionData?.user) {
           await updateProfileAfterGoogleSignIn(sessionData.user);
+          
+          // Track signup/login event
+          try {
+            console.log('[PostHog] Capturing user_signed_up event for:', sessionData.user.id);
+            posthog.capture('user_signed_up', {
+              method: 'google',
+            });
+            
+            console.log('[PostHog] Identifying user:', sessionData.user.id, sessionData.user.email);
+            posthog.identify(sessionData.user.id, {
+              email: sessionData.user.email,
+              name: sessionData.user.user_metadata?.full_name,
+            });
+          } catch (posthogError) {
+            console.log('[PostHog] Tracking failed (non-critical):', posthogError);
+          }
         }
 
         return sessionData;
@@ -434,6 +483,22 @@ export async function signInWithGoogle() {
         // Update profile with Google user data
         if (sessionData?.user) {
           await updateProfileAfterGoogleSignIn(sessionData.user);
+          
+          // Track signup/login event
+          try {
+            console.log('[PostHog] Capturing user_signed_up event for:', sessionData.user.id);
+            posthog.capture('user_signed_up', {
+              method: 'google',
+            });
+            
+            console.log('[PostHog] Identifying user:', sessionData.user.id, sessionData.user.email);
+            posthog.identify(sessionData.user.id, {
+              email: sessionData.user.email,
+              name: sessionData.user.user_metadata?.full_name,
+            });
+          } catch (posthogError) {
+            console.log('[PostHog] Tracking failed (non-critical):', posthogError);
+          }
         }
 
         return sessionData;

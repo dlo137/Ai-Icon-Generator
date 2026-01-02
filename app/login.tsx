@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
 import { useRouter } from 'expo-router';
 import { signInEmail, signInWithApple, signInWithGoogle } from '../src/features/auth/api';
+import { usePostHog } from 'posthog-react-native';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -10,6 +11,7 @@ export default function LoginScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
+  const posthog = usePostHog();
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -23,6 +25,11 @@ export default function LoginScreen() {
       const data = await signInEmail(email, password);
 
       if (data.user) {
+        // Identify user for PostHog
+        posthog?.identify(data.user.id, {
+          email: data.user.email,
+        });
+        
         // For existing users logging in, mark onboarding as complete
         const { completeOnboarding } = require('../src/features/auth/api');
         try {
@@ -48,6 +55,11 @@ export default function LoginScreen() {
       const data = await signInWithApple();
 
       if (data.user) {
+        // Identify user for PostHog
+        posthog?.identify(data.user.id, {
+          email: data.user.email,
+        });
+        
         // For existing users logging in, mark onboarding as complete
         const { completeOnboarding } = require('../src/features/auth/api');
         try {
@@ -90,6 +102,11 @@ export default function LoginScreen() {
               const data = await signInWithGoogle();
 
               if (data.user) {
+                // Identify user for PostHog
+                posthog?.identify(data.user.id, {
+                  email: data.user.email,
+                });
+                
                 // Successfully signed in, navigate to main app
                 router.push('/(tabs)/generate');
               }

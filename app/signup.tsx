@@ -1,9 +1,10 @@
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, ScrollView, Linking, Image } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import { signUpEmail, signInWithApple, signInWithGoogle, completeOnboarding } from '../src/features/auth/api';
 import { createGuestSession, isGuestSession, upgradeGuestToAccount } from '../src/utils/guestSession';
+import { usePostHog } from 'posthog-react-native';
 
 export default function SignUpScreen() {
   const [name, setName] = useState('');
@@ -12,6 +13,13 @@ export default function SignUpScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
+  const posthog = usePostHog();
+
+  // Track when signup screen is viewed
+  useEffect(() => {
+    console.log('[PostHog] Tracking: onboarding_signup_screen_viewed');
+    posthog?.capture('onboarding_signup_screen_viewed');
+  }, [posthog]);
 
   const handleSignUp = async () => {
     if (!name || !email || !password) {
@@ -30,6 +38,21 @@ export default function SignUpScreen() {
       const data = await signUpEmail(email, password, name);
 
       if (data.user) {
+        console.log('[PostHog] Capturing user_signed_up event for:', data.user.id);
+        
+        // Track signup event
+        posthog?.capture('user_signed_up', {
+          method: 'email',
+        });
+        
+        console.log('[PostHog] Identifying user:', data.user.id, data.user.email);
+        
+        // Identify user for PostHog
+        posthog?.identify(data.user.id, {
+          email: data.user.email || '',
+          name: name,
+        });
+        
         // Clear any existing guest session since this is now a regular user
         const { clearGuestSession } = require('../src/utils/guestSession');
         await clearGuestSession();
@@ -71,6 +94,16 @@ export default function SignUpScreen() {
       const data = await signInWithApple();
 
       if (data.user) {
+        // Track signup event
+        posthog?.capture('user_signed_up', {
+          method: 'apple',
+        });
+        
+        // Identify user for PostHog
+        posthog?.identify(data.user.id, {
+          email: data.user.email || '',
+        });
+        
         // Clear any existing guest session since this is now a regular user
         const { clearGuestSession } = require('../src/utils/guestSession');
         await clearGuestSession();
@@ -113,6 +146,16 @@ export default function SignUpScreen() {
               const data = await signInWithGoogle();
 
               if (data.session?.user) {
+                // Track signup event
+                posthog?.capture('user_signed_up', {
+                  method: 'google',
+                });
+                
+                // Identify user for PostHog
+                posthog?.identify(data.session.user.id, {
+                  email: data.session.user.email || '',
+                });
+                
                 // Clear any existing guest session since this is now a regular user
                 const { clearGuestSession } = require('../src/utils/guestSession');
                 await clearGuestSession();

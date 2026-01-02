@@ -3,6 +3,7 @@ import { Stack, useRouter } from 'expo-router';
 import { useEffect } from 'react';
 import { Alert, Linking, LogBox } from 'react-native';
 import { CreditsProvider } from '../src/contexts/CreditsContext';
+import { PostHogProvider, usePostHog } from 'posthog-react-native';
 
 // Suppress media library warning and NitroModules error for Expo Go
 LogBox.ignoreLogs([
@@ -12,6 +13,12 @@ LogBox.ignoreLogs([
 
 function RootLayoutNav() {
   const router = useRouter();
+  const posthog = usePostHog();
+
+  // Fire PostHog test event
+  useEffect(() => {
+    posthog?.capture('app_opened_test');
+  }, [posthog]);
 
   // Listen for deep links from Google Sign-In
   useEffect(() => {
@@ -182,8 +189,17 @@ function RootLayoutNav() {
 
 export default function RootLayout() {
   return (
-    <CreditsProvider>
-      <RootLayoutNav />
-    </CreditsProvider>
+    <PostHogProvider
+      apiKey="phc_UIEKZ38vjlXI2YhAhYHJ1n6Mosf1wti1XUzE9Zb5WQT"
+      options={{
+        host: 'https://us.i.posthog.com',
+        enableSessionReplay: true,
+      }}
+      autocapture
+    >
+      <CreditsProvider>
+        <RootLayoutNav />
+      </CreditsProvider>
+    </PostHogProvider>
   );
 }
