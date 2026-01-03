@@ -155,7 +155,20 @@ class ConsumableIAPService {
     // Handle purchase errors
     this.purchaseErrorSubscription = RNIap.purchaseErrorListener((error: any) => {
       console.warn('[ConsumableIAP] Purchase error:', error.code, error.message);
-      // Don't throw - user may have cancelled, which is normal
+      
+      // User cancelled is normal behavior
+      if (error.code === 'E_USER_CANCELLED') {
+        console.log('[ConsumableIAP] User cancelled purchase - this is normal');
+        // Fire callback with cancellation info so UI can clear state
+        if (this.creditGrantCallback) {
+          // Use special value to signal cancellation
+          this.creditGrantCallback(0, 'CANCELLED', 'CANCELLED').catch(() => {
+            // Ignore errors from cancellation callback
+          });
+        }
+      }
+      
+      // Don't throw - purchase errors are handled via return values in purchasePack
     });
   }
 
@@ -186,8 +199,28 @@ class ConsumableIAPService {
     console.log('[ConsumableIAP] PURCHASE UPDATE RECEIVED');
     console.log('[ConsumableIAP] Transaction ID:', transactionId);
     console.log('[ConsumableIAP] Product ID (extracted):', productId);
+    console.log('[ConsumableIAP] Transaction State:', purchase.transactionState);
+    console.log('[ConsumableIAP] Purchase State:', purchase.purchaseState);
     console.log('[ConsumableIAP] Full purchase object:', JSON.stringify(purchase, null, 2));
     console.log('[ConsumableIAP] ========================================');
+
+    // CRITICAL: Only process purchases in "purchased" state
+    // Ignore pending, deferred, failed, or cancelled purchases
+    // iOS uses transactionState, Android uses purchaseState
+    const transactionState = purchase.transactionState || purchase.purchaseState;
+    
+    // iOS states: 'purchasing' (0), 'purchased' (1), 'failed' (2), 'restored' (3), 'deferred' (4)
+    // Android states: 0 (purchased), 1 (cancelled), 2 (refunded/pending)
+    // We only want to process state 1 for iOS or 0 for Android
+    const isPurchased = Platform.OS === 'ios' 
+      ? (transactionState === 1 || transactionState === 'purchased')
+      : (transactionState === 0 || transactionState === 'purchased');
+    
+    if (!isPurchased) {
+      console.log('[ConsumableIAP] ⚠️ Purchase not in purchased state (state:', transactionState, '), ignoring');
+      console.log('[ConsumableIAP] This is normal for cancelled, pending, or failed purchases');
+      return;
+    }
 
     if (!transactionId) {
       console.error('[ConsumableIAP] ❌ Purchase missing transactionId:', purchase);

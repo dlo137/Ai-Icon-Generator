@@ -81,6 +81,13 @@ export function useConsumableIAP(creditPacks: CreditPackConfig[]): UseConsumable
         await ConsumableIAPService.initialize(creditPacks, async (credits: number, transactionId: string, productId: string) => {
           console.log('[useConsumableIAP] Credits granted via callback:', credits, transactionId, productId);
           
+          // Handle cancellation signal
+          if (transactionId === 'CANCELLED') {
+            console.log('[useConsumableIAP] Purchase cancelled by user');
+            setPurchasingProduct(null);
+            return;
+          }
+          
           try {
             // Update Supabase profile
             console.log('[useConsumableIAP] Updating Supabase profile...');
