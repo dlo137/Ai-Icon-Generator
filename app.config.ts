@@ -2,11 +2,11 @@ import 'dotenv/config';
 
 export default {
   expo: {
-    name: "AI Icons",
+    name: "Dev Icons",
     slug: "ai-icon-generator",
     version: "1.0.28",
     orientation: "portrait",
-    icon: "./assets/icon.png",
+    icon: "./assets/icon.jpg",
     userInterfaceStyle: "light",
     scheme: "icongenerator",
     plugins: [
@@ -34,7 +34,7 @@ export default {
       supportsTablet: true,
       bundleIdentifier: "com.watson.AI-Icon-Generator",
       buildNumber: "23",
-      icon: "./assets/icon.png",
+      icon: "./assets/icon.jpg",
       infoPlist: {
         ITSAppUsesNonExemptEncryption: false,
         NSPhotoLibraryUsageDescription: "This app needs access to your photo library to save generated icons.",

@@ -420,7 +420,7 @@ export default function WelcomeScreen() {
           >
             {step === 1 ? (
               <>
-                Icon Designs{'\n'}Made Easy
+                App Icons {'\n'}Made Easy
               </>
             ) : step === 2 ? (
               <>

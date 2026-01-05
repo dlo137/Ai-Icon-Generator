@@ -97,7 +97,7 @@ const uploadImageToStorage = async (imageUri: string, fileName: string): Promise
 };
 
 export default function GenerateScreen() {
-  const { credits, refreshCredits } = useCredits();
+  const { credits, maxCredits, refreshCredits } = useCredits();
   const [topic, setTopic] = useState('');
   const [duration, setDuration] = useState(''); // kept for existing logic
   const [style, setStyle] = useState('educational'); // kept for existing logic
@@ -1577,7 +1577,7 @@ export default function GenerateScreen() {
               <Text style={styles.closeIcon}>✕</Text>
             </TouchableOpacity>
             <View style={styles.modalCreditsContainer}>
-              <Text style={styles.modalCreditsText}>{credits.current}/{credits.max} icons</Text>
+              <Text style={styles.modalCreditsText}>{credits}/{maxCredits} icons</Text>
             </View>
           </View>
 
