@@ -2,7 +2,7 @@ import 'dotenv/config';
 
 export default {
   expo: {
-    name: "Dev Icons",
+    name: "App Icons",
     slug: "ai-icon-generator",
     version: "1.0.29",
     orientation: "portrait",
